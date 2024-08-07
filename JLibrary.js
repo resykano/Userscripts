@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           JAVLibrary
-// @description    Many improvements for recherche the source with best quality, easier collection of Rapidgator links for JDownloader (press <), information about actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking
+// @description    Many improvements in details view of a video: for recherche and easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking
 // @version        20240807
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico

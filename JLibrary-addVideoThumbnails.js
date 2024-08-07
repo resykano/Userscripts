@@ -8,6 +8,7 @@
 // @grant          GM_xmlhttpRequest
 // @grant          GM_addStyle
 // @run-at         document-idle
+// @compatible     chrome
 // @license        GPL3
 // @noframes
 // ==/UserScript==

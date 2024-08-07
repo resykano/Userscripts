@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name           Add Video Thumbnails 
+// @name           Add Video Thumbnails
 // @description    Inserts a video preview in the form of thumbnails
 // @version        20240807
 // @author         resykano
@@ -147,7 +147,7 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
                 .replace("/th/", "/i/");
             if (/imagetwist/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
             return targetImageUrl;
-            
+
             // additional image processing, which, however, no longer appears to be necessary
             return xmlhttpRequest(targetImageUrl, targetImageUrl.replace(/^(https?:\/\/[^\/#&]+).*$/, "$1"), 10000)
                 .then((result) => {

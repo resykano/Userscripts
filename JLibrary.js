@@ -24,8 +24,6 @@
 // ---------------------------------------------------------------------------------------
 let copied = false;
 const originalDocumentTitle = document.title;
-// GM_setValue("authorsMode", true);
-const authorsMode = await GM_getValue("authorsMode", false);
 
 function getTitleElement() {
     return document.querySelector("#video_id > table > tbody > tr > td.text");
@@ -94,7 +92,9 @@ function addTitleCopyPerClick() {
     });
 }
 
-function initalCopyVideoTitleToClipboard(source) {
+async function initalCopyVideoTitleToClipboard(source) {
+    const authorsMode = await GM_getValue("authorsMode", false);
+
     if (authorsMode) {
         const textElement = getTitleElement();
         let videoTitle = getTitle();
@@ -124,7 +124,9 @@ function initalCopyVideoTitleToClipboard(source) {
  * as information for the execution of another local script
  * Button and auto execute disabled if GM variable privateMode is not set
  */
-function addLocalSearch() {
+async function addLocalSearch() {
+    const authorsMode = await GM_getValue("authorsMode", false);
+
     if (authorsMode) {
         let targetElement = getTitleElement();
 
@@ -443,7 +445,7 @@ function setCommercialPreviewsFullSize() {
 // Main
 // ---------------------------------------------------------------------------------------
 
-function main() {
+async function main() {
     // Cloudflare restricted access
     if (/.*/.test(window.location.href)) {
         if (document.title.includes("Access denied")) {
@@ -561,6 +563,7 @@ function main() {
             }, 500);
 
             // copy title to clipboard
+            const authorsMode = await GM_getValue("authorsMode", false);
             if (authorsMode) {
                 (function () {
                     // Handle the case when the window is opened in the background
@@ -695,4 +698,5 @@ function main() {
     }
 }
 
+// GM_setValue("authorsMode", true);
 main();

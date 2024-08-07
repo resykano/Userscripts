@@ -31,7 +31,7 @@ function getTitleElement() {
 function getTitle() {
     return getTitleElement()?.textContent;
 }
-function anchorForNewLinks() {
+function castContainer() {
     return document.querySelector("#video_cast");
 }
 
@@ -138,6 +138,7 @@ async function addLocalSearch() {
         // targetElement.parentNode.insertBefore(newButton, targetElement.nextSibling);
         insertElement("after", newButton, targetElement);
 
+
         newButton.addEventListener(
             "click",
             function () {
@@ -229,13 +230,13 @@ function coverImageDownload() {
  * @param {*} separator Adds a space on top
  * @param {*} className Adds a class
  */
-function addSearchButton(name, href, className, separator = false) {
+function addSearchLinksAndOpenAllButtons(name, href, className, separator = false) {
     if (separator) {
         separator = "added-links-separator";
     }
     if (className === "") className = undefined;
 
-    let existingContainer = anchorForNewLinks();
+    let existingContainer = castContainer();
     let newElementContainer = document.createElement("div");
     newElementContainer.classList.add("added-links");
     newElementContainer.classList.add(separator);
@@ -271,7 +272,7 @@ function addSearchButton(name, href, className, separator = false) {
         newElementContainer.appendChild(openAllButton);
     }
 
-    insertElement("after", newElementContainer, existingContainer);
+    existingContainer.insertAdjacentElement("afterend", newElementContainer);
 }
 
 // Execute when button pressed with collecting comments for importing into Jdownloader
@@ -293,14 +294,15 @@ async function executeCollectingComments(event) {
             GM_setValue("executingCollectingComments", true);
             location.reload();
         } else {
-            copyContentsForJdownloader();
+            copyContentsToClipboard();
             // alert("No more comments!");
         }
     }
 }
 
 // Function to copy the contents of the #video_comments element to the clipboard
-function copyContentsForJdownloader() {
+// for collecting download links in apps like JDownloader
+function copyContentsToClipboard() {
     const commentsElement = document.querySelector("#video_comments");
     if (commentsElement) {
         const commentsContent = commentsElement.innerText;
@@ -358,13 +360,13 @@ function addImageSearchToCasts() {
         addButton("JB", "https://japanesebeauties.one/search.php?model=");
         addButton("JJG", "https://jjgirls.com/match.php?model=");
         addButton("KT", "https://kawaiithong.com/search_kawaii_pics/");
-        addButton("D", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
+        addButton("XSL", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org Photo Gallery ");
         addButton("Y", "https://yandex.com/images/search?text=");
         addButton("JW", "https://jav.fandom.com/wiki/Special:Search?query=");
     });
 }
 
-async function makeFavoriteStarsVisible() {
+async function makeFavoriteCastVisible() {
     const favoriteClass = "favorite-star";
 
     function addCustomCSS() {
@@ -382,7 +384,7 @@ async function makeFavoriteStarsVisible() {
         `);
     }
 
-    function toggleFavoriteStar(event) {
+    function toggleFavoriteCast(event) {
         const element = event.target;
         const elementId = element.id;
         const isFavorite = element.classList.toggle(favoriteClass);
@@ -403,7 +405,7 @@ async function makeFavoriteStarsVisible() {
         if (isFavoriteStar) {
             element.classList.add(favoriteClass);
         }
-        element.addEventListener("click", toggleFavoriteStar);
+        element.addEventListener("click", toggleFavoriteCast);
     }
 }
 
@@ -428,7 +430,7 @@ function removeResizingOfCoverImage() {
     observer.observe(coverImage, { attributes: true });
 }
 
-function setCommercialPreviewsFullSize() {
+function setCommercialPreviewsToFullSize() {
     const commercialPreviewImageLinks = document.querySelectorAll("#rightcolumn > div.previewthumbs > a");
 
     commercialPreviewImageLinks.forEach((anchor) => {
@@ -496,42 +498,42 @@ async function main() {
             addLocalSearch();
 
             // increase commercial previews
-            setCommercialPreviewsFullSize();
+            setCommercialPreviewsToFullSize();
 
-            addSearchButton(
+            addSearchLinksAndOpenAllButtons(
                 "DuckDuckGo Screens",
                 "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + getTitle() + '"' + " JAV",
                 ""
             );
-            addSearchButton("DuckDuckGo", "https://duckduckgo.com/?kp=-2&q=" + '"' + getTitle() + '"' + " JAV", "", true);
+            addSearchLinksAndOpenAllButtons("DuckDuckGo", "https://duckduckgo.com/?kp=-2&q=" + '"' + getTitle() + '"' + " JAV", "", true);
 
-            addSearchButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + getTitle(), "Stream");
-            addSearchButton("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getTitle(), "Stream");
-            addSearchButton("Jable | Stream", "https://jable.tv/search/" + getTitle() + "/", "Stream");
-            addSearchButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + getTitle(), "Stream");
-            addSearchButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + getTitle(), "Stream", true);
+            addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getTitle(), "Stream");
+            addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getTitle(), "Stream");
+            addSearchLinksAndOpenAllButtons("Jable | Stream", "https://jable.tv/search/" + getTitle() + "/", "Stream");
+            addSearchLinksAndOpenAllButtons("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + getTitle(), "Stream");
+            addSearchLinksAndOpenAllButtons("HORNYJAV | Stream", "https://hornyjav.com/?s=" + getTitle(), "Stream", true);
 
-            addSearchButton("JavPlace | Torrent", "https://jav.place/?q=" + getTitle(), "");
-            addSearchButton("JAVHOO | Torrent", "https://www.javhoo.com/en/search/" + getTitle(), "");
-            addSearchButton("JAV-Menu | Torrent", "https://jjavbooks.com/en/" + getTitle(), "", true);
+            addSearchLinksAndOpenAllButtons("JavPlace | Torrent", "https://jav.place/?q=" + getTitle(), "");
+            addSearchLinksAndOpenAllButtons("JAVHOO | Torrent", "https://www.javhoo.com/en/search/" + getTitle(), "");
+            addSearchLinksAndOpenAllButtons("JAV-Menu | Torrent", "https://jjavbooks.com/en/" + getTitle(), "", true);
 
-            addSearchButton("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + getTitle(), "GDrive");
-            addSearchButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getTitle(), "GDrive");
-            addSearchButton("JAVGG | Google Drive", "https://javgg.me/?s=" + getTitle(), "GDrive", true);
+            addSearchLinksAndOpenAllButtons("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + getTitle(), "GDrive");
+            addSearchLinksAndOpenAllButtons("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getTitle(), "GDrive");
+            addSearchLinksAndOpenAllButtons("JAVGG | Google Drive", "https://javgg.me/?s=" + getTitle(), "GDrive", true);
 
-            addSearchButton("BLOGJAV.NET | RG", "https://blogjav.net/?s=" + getTitle(), "");
-            addSearchButton("JAVDAILY | RG", "https://javdaily31.blogspot.com/search?q=" + getTitle(), "", true);
+            addSearchLinksAndOpenAllButtons("BLOGJAV.NET | RG", "https://blogjav.net/?s=" + getTitle(), "");
+            addSearchLinksAndOpenAllButtons("JAVDAILY | RG", "https://javdaily31.blogspot.com/search?q=" + getTitle(), "", true);
 
-            addSearchButton("MissAV | RG | Stream", "https://missav.com/en/search/" + getTitle(), "RG");
-            addSearchButton("Supjav | RG", "https://supjav.com/?s=" + getTitle(), "RG");
-            addSearchButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + getTitle(), "RG", true);
+            addSearchLinksAndOpenAllButtons("MissAV | RG | Stream", "https://missav.com/en/search/" + getTitle(), "RG");
+            addSearchLinksAndOpenAllButtons("Supjav | RG", "https://supjav.com/?s=" + getTitle(), "RG");
+            addSearchLinksAndOpenAllButtons("JAV Guru | RG | Stream", "https://jav.guru/?s=" + getTitle(), "RG", true);
 
-            addSearchButton("3xPlanet | Preview", "https://3xplanet.com/?s=" + getTitle(), "Preview2");
-            addSearchButton("JAVAkiba | Preview", "https://javakiba.org/?s=" + getTitle(), "Preview2");
-            addSearchButton("Video-JAV | Preview", "http://video-jav.net/?s=" + getTitle(), "Preview2", true);
+            addSearchLinksAndOpenAllButtons("3xPlanet | Preview", "https://3xplanet.com/?s=" + getTitle(), "Preview2");
+            addSearchLinksAndOpenAllButtons("JAVAkiba | Preview", "https://javakiba.org/?s=" + getTitle(), "Preview2");
+            addSearchLinksAndOpenAllButtons("Video-JAV | Preview", "http://video-jav.net/?s=" + getTitle(), "Preview2", true);
 
-            addSearchButton("JAV Max Quality | Preview", "https://maxjav.com/?s=" + getTitle(), "Preview1");
-            addSearchButton(
+            addSearchLinksAndOpenAllButtons("JAV Max Quality | Preview", "https://maxjav.com/?s=" + getTitle(), "Preview1");
+            addSearchLinksAndOpenAllButtons(
                 "Akiba-Online | Preview",
                 "https://www.akiba-online.com/search/?q=" + getTitle() + "&c%5Btitle_only%5D=1&o=date&search=" + getTitle(),
                 "Preview1",
@@ -539,7 +541,7 @@ async function main() {
             );
 
             // add Searches
-            addSearchButton("Torrent-Search", "https://bt4g.org/search/" + getTitle() + "&orderby=size", "", true);
+            addSearchLinksAndOpenAllButtons("Torrent-Search", "https://bt4g.org/search/" + getTitle() + "&orderby=size", "", true);
 
             // add Cover Image Download button
             coverImageDownload();
@@ -553,6 +555,7 @@ async function main() {
                     spanElement.innerHTML = linkElement.innerHTML;
                     // linkElement.parentNode.insertBefore(spanElement, linkElement);
                     insertElement("after", spanElement, linkElement);
+
                     linkElement.parentNode.removeChild(linkElement);
                 }
             })();
@@ -591,7 +594,7 @@ async function main() {
             }
 
             addImageSearchToCasts();
-            makeFavoriteStarsVisible();
+            makeFavoriteCastVisible();
 
             // window.addEventListener("keydown", executeCollectingComments, { once: true });
             window.addEventListener("keydown", executeCollectingComments);
@@ -644,7 +647,7 @@ async function main() {
             console.log("Comments Page");
 
             async function loadNextPage() {
-                copyContentsForJdownloader(); // Copy the comments content before loading the next page
+                copyContentsToClipboard(); // Copy the comments content before loading the next page
 
                 let currentPage = new URL(window.location.href).searchParams.get("page");
                 let lastPageUrl = document.querySelector("#rightcolumn > div.page_selector > a.page.last")?.href;

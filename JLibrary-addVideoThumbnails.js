@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name           Add Video Thumbnails
-// @description    Inserts a video preview in the form of thumbnails
+// @name           JAVLibrary Video Thumbnails
+// @description    Inserts a video preview in form of thumbnails
 // @version        20240808
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
-// @match          https://www.javlibrary.com/*/?v=*
+// @match          *://*.javlibrary.com/*/?v=*
 // @match          *://*x75p.com/*/?v=*
 // @grant          GM_xmlhttpRequest
 // @grant          GM_addStyle

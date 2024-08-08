@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name           JAVLibrary General
+// @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking
-// @version        20240808
+// @version        20240809
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -68,6 +68,34 @@ function insertElement(position, newElement, existingNode) {
             break;
         }
     }
+}
+
+/**
+ * Waits for an element until it exists
+ *
+ * @param {string} selector CSS selector of a NodeList/HTMLCollection
+ * @param {number} index
+ * @see source: {@link https://stackoverflow.com/a/61511955/13427318}
+ * @returns Element
+ */
+function waitForElement(selector, index = 0) {
+    return new Promise((resolve) => {
+        if (selector && document.querySelector(selector) && document.querySelectorAll(selector)[index]) {
+            return resolve(document.querySelectorAll(selector)[index]);
+        }
+
+        const observer = new MutationObserver(() => {
+            if (selector && document.querySelectorAll(selector) && document.querySelectorAll(selector)[index]) {
+                resolve(document.querySelectorAll(selector)[index]);
+                observer.disconnect();
+            }
+        });
+
+        observer.observe(document, {
+            childList: true,
+            subtree: true,
+        });
+    });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -137,7 +165,6 @@ async function addLocalSearch() {
 
         // targetElement.parentNode.insertBefore(newButton, targetElement.nextSibling);
         insertElement("after", newButton, targetElement);
-
 
         newButton.addEventListener(
             "click",
@@ -389,6 +416,40 @@ async function makeFavoriteCastVisible() {
         const elementId = element.id;
         const isFavorite = element.classList.toggle(favoriteClass);
 
+        // hide and auto close modal asking if cast should be added to favorites
+        waitForElement("div.noty_bar.center.alert.default").then(() => {
+            function addTemporaryCssRule() {
+                var styleElement = GM_addStyle(`
+                    div.noty_bar.center.alert.default,
+                    div.noty_modal
+                    {
+                        display: none !important;
+                    }
+                `);
+
+                // Remove the CSS after the specified duration
+                setTimeout(function () {
+                    styleElement.parentNode.removeChild(styleElement);
+                }, 2000);
+            }
+
+            // Hide modal until we have clicked it away
+            addTemporaryCssRule();
+
+            // The "ok" and "close" buttons are always created immediately in the DOM and then adjusted afterwards.
+            // This means that the decision as to what must be clicked does not work with the if clause.
+            // close with ok
+            let okButton = document.querySelector(
+                "div.noty_bar.center.alert.default > div.noty_message > div.noty_text > div.noty_buttons > button.button.green"
+            );
+            okButton?.click();
+            // if not closed with ok, then with close button which can only be clicked after a delay
+            setTimeout(() => {
+                let closeButton = document.querySelector("div.noty_bar.center.alert.default > div.noty_message > div.noty_close");
+                closeButton?.click();
+            }, 1000);
+        });
+
         if (isFavorite) {
             GM_setValue(elementId, true);
         } else {
@@ -505,7 +566,12 @@ async function main() {
                 "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + getTitle() + '"' + " JAV",
                 ""
             );
-            addSearchLinksAndOpenAllButtons("DuckDuckGo", "https://duckduckgo.com/?kp=-2&q=" + '"' + getTitle() + '"' + " JAV", "", true);
+            addSearchLinksAndOpenAllButtons(
+                "DuckDuckGo",
+                "https://duckduckgo.com/?kp=-2&q=" + '"' + getTitle() + '"' + " JAV",
+                "",
+                true
+            );
 
             addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getTitle(), "Stream");
             addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getTitle(), "Stream");

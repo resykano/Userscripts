@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, full size commercial photos
-// @version        20240810
+// @version        20240810a
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -248,7 +248,7 @@ function addSearchLinksAndOpenAllButtons(name, href, className, separator = fals
     newElementContainer.classList.add(separator);
     newElementContainer.classList.add(className);
     newElementContainer.style.display = "flex";
-    newElementContainer.style.alignItems = "center";
+    newElementContainer.style.alignItems = "flex-end";
     newElementContainer.style.justifyContent = "space-between";
 
     let newElement = document.createElement("a");
@@ -258,10 +258,12 @@ function addSearchLinksAndOpenAllButtons(name, href, className, separator = fals
 
     // add open all links buttons
     if (separator && className) {
-        let openAllButton = document.createElement("button");
-        openAllButton.textContent = "Open " + className;
+        const openAllButton = document.createElement("button");
+        const buttonTitle = className.replace(/-/g, " ");
+
+        openAllButton.textContent = "Open " + buttonTitle;
         openAllButton.style.marginLeft = "8px";
-        openAllButton.style.minWidth = "110px";
+        openAllButton.style.width = "160px";
         openAllButton.style.height = "22px";
         openAllButton.style.userSelect = "none";
         openAllButton.className = "smallbutton";
@@ -526,7 +528,7 @@ async function main() {
 
                 .added-links {
                     margin-left: 107px;
-                    max-width: 270px;
+                    max-width: 340px;
                 }
                 .added-links-separator {
                     margin-top: 10px;
@@ -570,36 +572,36 @@ async function main() {
                 true
             );
 
-            addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getTitle(), "Stream");
-            addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getTitle(), "Stream");
-            addSearchLinksAndOpenAllButtons("Jable | Stream", "https://jable.tv/search/" + getTitle() + "/", "Stream");
-            addSearchLinksAndOpenAllButtons("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + getTitle(), "Stream");
-            addSearchLinksAndOpenAllButtons("HORNYJAV | Stream", "https://hornyjav.com/?s=" + getTitle(), "Stream", true);
+            addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getTitle(), "Stream-Group");
+            addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getTitle(), "Stream-Group");
+            addSearchLinksAndOpenAllButtons("Jable | Stream", "https://jable.tv/search/" + getTitle() + "/", "Stream-Group");
+            addSearchLinksAndOpenAllButtons("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + getTitle(), "Stream-Group");
+            addSearchLinksAndOpenAllButtons("HORNYJAV | Stream", "https://hornyjav.com/?s=" + getTitle(), "Stream-Group", true);
 
             addSearchLinksAndOpenAllButtons("JavPlace | Torrent", "https://jav.place/?q=" + getTitle(), "");
             addSearchLinksAndOpenAllButtons("JAVHOO | Torrent", "https://www.javhoo.com/en/search/" + getTitle(), "");
             addSearchLinksAndOpenAllButtons("JAV-Menu | Torrent", "https://jjavbooks.com/en/" + getTitle(), "", true);
 
-            addSearchLinksAndOpenAllButtons("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + getTitle(), "GDrive");
-            addSearchLinksAndOpenAllButtons("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getTitle(), "GDrive");
-            addSearchLinksAndOpenAllButtons("JAVGG | Google Drive", "https://javgg.me/?s=" + getTitle(), "GDrive", true);
+            addSearchLinksAndOpenAllButtons("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + getTitle(), "GDrive-Group");
+            addSearchLinksAndOpenAllButtons("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getTitle(), "GDrive-Group");
+            addSearchLinksAndOpenAllButtons("JAVGG | Google Drive", "https://javgg.me/?s=" + getTitle(), "GDrive-Group", true);
 
             addSearchLinksAndOpenAllButtons("BLOGJAV.NET | RG", "https://blogjav.net/?s=" + getTitle(), "");
             addSearchLinksAndOpenAllButtons("JAVDAILY | RG", "https://javdaily31.blogspot.com/search?q=" + getTitle(), "", true);
 
-            addSearchLinksAndOpenAllButtons("MissAV | RG | Stream", "https://missav.com/en/search/" + getTitle(), "RG");
-            addSearchLinksAndOpenAllButtons("Supjav | RG", "https://supjav.com/?s=" + getTitle(), "RG");
-            addSearchLinksAndOpenAllButtons("JAV Guru | RG | Stream", "https://jav.guru/?s=" + getTitle(), "RG", true);
+            addSearchLinksAndOpenAllButtons("MissAV | RG | Stream", "https://missav.com/en/search/" + getTitle(), "RG-Group");
+            addSearchLinksAndOpenAllButtons("Supjav | RG", "https://supjav.com/?s=" + getTitle(), "RG-Group");
+            addSearchLinksAndOpenAllButtons("JAV Guru | RG | Stream", "https://jav.guru/?s=" + getTitle(), "RG-Group", true);
 
-            addSearchLinksAndOpenAllButtons("3xPlanet | Preview", "https://3xplanet.com/?s=" + getTitle(), "Preview2");
-            addSearchLinksAndOpenAllButtons("JAVAkiba | Preview", "https://javakiba.org/?s=" + getTitle(), "Preview2");
-            addSearchLinksAndOpenAllButtons("Video-JAV | Preview", "http://video-jav.net/?s=" + getTitle(), "Preview2", true);
+            addSearchLinksAndOpenAllButtons("3xPlanet | Preview", "https://3xplanet.com/?s=" + getTitle(), "Preview-Group-2");
+            addSearchLinksAndOpenAllButtons("JAVAkiba | Preview", "https://javakiba.org/?s=" + getTitle(), "Preview-Group-2");
+            addSearchLinksAndOpenAllButtons("Video-JAV | Preview", "http://video-jav.net/?s=" + getTitle(), "Preview-Group-2", true);
 
-            addSearchLinksAndOpenAllButtons("JAV Max Quality | Preview", "https://maxjav.com/?s=" + getTitle(), "Preview1");
+            addSearchLinksAndOpenAllButtons("JAV Max Quality | Preview", "https://maxjav.com/?s=" + getTitle(), "Preview-Group-1");
             addSearchLinksAndOpenAllButtons(
                 "Akiba-Online | Preview",
                 "https://www.akiba-online.com/search/?q=" + getTitle() + "&c%5Btitle_only%5D=1&o=date&search=" + getTitle(),
-                "Preview1",
+                "Preview-Group-1",
                 true
             );
 
@@ -616,7 +618,7 @@ async function main() {
                 if (linkElement) {
                     let spanElement = document.createElement("span");
                     spanElement.innerHTML = linkElement.innerHTML;
-                    linkElement.insertAdjacentElement('beforebegin', spanElement);
+                    linkElement.insertAdjacentElement("beforebegin", spanElement);
                     linkElement.parentNode.removeChild(linkElement);
                 }
             })();

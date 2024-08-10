@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Video Thumbnails
 // @description    Inserts a video preview in form of thumbnails
-// @version        20240809
+// @version        20240810
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*/?v=*
@@ -117,7 +117,7 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
             return null;
         }
         const link = findLinkInDocument(result.responseText, avid, "#b_results .b_algo h2 a");
-        if (link === null) console.log("AVID not found on Bing.");
+        if (link === null) console.log("AVID not found in first results on Bing.");
         return link;
     }
 
@@ -147,15 +147,14 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
                 .replace(/[\?*\"*]/g, "")
                 .replace("/th/", "/i/");
             if (/imagetwist/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
-            return targetImageUrl;
 
             // check if only a picture removed image is shown, but not yet working
             return xmlhttpRequest(targetImageUrl, targetImageUrl.replace(/^(https?:\/\/[^\/#&]+).*$/, "$1"), 10000)
                 .then((result) => {
                     if (result.loadstuts) {
                         const responseHeaders = result.responseHeaders;
-                        const responseUrl = responseHeaders["Location"] || targetImageUrl; // if forwarding
-                        console.log(result);
+                        const finalUrl = result.finalUrl;
+                        const responseUrl = responseHeaders["Location"] || finalUrl; // if forwarding
 
                         if (
                             targetImageUrl.replace(/^https?:\/\//, "") === responseUrl.replace(/^https?:\/\//, "") ||
@@ -163,7 +162,7 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
                         ) {
                             return targetImageUrl;
                         } else {
-                            throw new Error("Image error");
+                            throw new Error("Only a removed image is shown");
                         }
                     } else {
                         throw new Error("Loading image URL");
@@ -259,7 +258,12 @@ function xmlhttpRequest(url, referer, timeout = 10000) {
             timeout: timeout,
             onload: function (response) {
                 if (response.status >= 200 && response.status < 300) {
-                    resolve({ loadstuts: true, responseHeaders: response.responseHeaders, responseText: response.responseText });
+                    resolve({
+                        loadstuts: true,
+                        responseHeaders: response.responseHeaders,
+                        responseText: response.responseText,
+                        finalUrl: response.finalUrl,
+                    });
                 } else {
                     resolve({ loadstuts: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
                 }

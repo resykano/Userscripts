@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, full size commercial photos
-// @version        20240810a
+// @version        20240810b
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -286,8 +286,8 @@ function addSearchLinksAndOpenAllButtons(name, href, className, separator = fals
 // Execute when button pressed with collecting comments for importing into Jdownloader
 async function executeCollectingComments(event) {
     if (event.key === "<") {
-        // press Open RG button
-        document.querySelector("#video_info > div.added-links.added-links-separator.RG > button")?.click();
+        // press Open RG Group button
+        document.querySelector("#video_info > div.added-links.added-links-separator.RG-Group > button")?.click();
 
         // go to all comments, if not already there
         const allCommentsLink = document.querySelector("#video_comments_all > a");

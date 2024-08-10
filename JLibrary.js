@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
-// @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking
+// @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, full size commercial photos
 // @version        20240810
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
@@ -46,30 +46,6 @@ function createBase64Svg(fillColor) {
 
 let favoriteImage = createBase64Svg("red");
 let nonFavoriteImage = createBase64Svg("lightgray");
-
-/**
- * Inserts new Nodes into DOM
- *
- * @param {string} position before, after, inside
- * @param {object} newElement
- * @param {object} existingNode
- */
-function insertElement(position, newElement, existingNode) {
-    switch (position) {
-        case "before": {
-            existingNode?.parentNode.insertBefore(newElement, existingNode);
-            break;
-        }
-        case "after": {
-            existingNode?.parentNode.insertBefore(newElement, existingNode.nextSibling);
-            break;
-        }
-        case "inside": {
-            existingNode?.insertBefore(newElement, existingNode.lastElementChild);
-            break;
-        }
-    }
-}
 
 /**
  * Waits for an element until it exists
@@ -164,8 +140,7 @@ async function addLocalSearch() {
         newButton.className = "smallbutton localsearch";
         newButton.style = "position:relative;top:-3px;margin-left:10px";
 
-        // targetElement.parentNode.insertBefore(newButton, targetElement.nextSibling);
-        insertElement("after", newButton, targetElement);
+        targetElement.insertAdjacentElement("afterend", newButton);
 
         newButton.addEventListener(
             "click",
@@ -180,10 +155,13 @@ async function addLocalSearch() {
 }
 
 function runLocalSearch() {
-    document.title = "Browser Local-Search";
-    setTimeout(() => {
-        document.title = originalDocumentTitle;
-    }, 100);
+    // not on image videos
+    if (!document.querySelector("#genre199")) {
+        document.title = "Browser Local-Search";
+        setTimeout(() => {
+            document.title = originalDocumentTitle;
+        }, 100);
+    }
 }
 
 function copyTitleToClipboard() {
@@ -492,7 +470,7 @@ function removeResizingOfCoverImage() {
     observer.observe(coverImage, { attributes: true });
 }
 
-function setCommercialPreviewsToFullSize() {
+function setPromotionalPhotosToFullSize() {
     const commercialPreviewImageLinks = document.querySelectorAll("#rightcolumn > div.previewthumbs > a");
 
     commercialPreviewImageLinks.forEach((anchor) => {
@@ -578,7 +556,7 @@ async function main() {
             addLocalSearch();
 
             // increase commercial previews
-            setCommercialPreviewsToFullSize();
+            setPromotionalPhotosToFullSize();
 
             addSearchLinksAndOpenAllButtons(
                 "DuckDuckGo Screens",
@@ -638,9 +616,7 @@ async function main() {
                 if (linkElement) {
                     let spanElement = document.createElement("span");
                     spanElement.innerHTML = linkElement.innerHTML;
-                    // linkElement.parentNode.insertBefore(spanElement, linkElement);
-                    insertElement("after", spanElement, linkElement);
-
+                    linkElement.insertAdjacentElement('beforebegin', spanElement);
                     linkElement.parentNode.removeChild(linkElement);
                 }
             })();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Video Thumbnails
 // @description    Inserts a video preview in form of thumbnails
-// @version        20240808
+// @version        20240809
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*/?v=*
@@ -149,12 +149,13 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
             if (/imagetwist/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
             return targetImageUrl;
 
-            // additional image processing, which, however, no longer appears to be necessary
+            // check if only a picture removed image is shown, but not yet working
             return xmlhttpRequest(targetImageUrl, targetImageUrl.replace(/^(https?:\/\/[^\/#&]+).*$/, "$1"), 10000)
                 .then((result) => {
                     if (result.loadstuts) {
                         const responseHeaders = result.responseHeaders;
                         const responseUrl = responseHeaders["Location"] || targetImageUrl; // if forwarding
+                        console.log(result);
 
                         if (
                             targetImageUrl.replace(/^https?:\/\//, "") === responseUrl.replace(/^https?:\/\//, "") ||

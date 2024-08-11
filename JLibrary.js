@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, full size commercial photos
-// @version        20240810b
+// @version        20240811
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -12,7 +12,7 @@
 // @grant          GM_getValue
 // @grant          GM_setValue
 // @grant          GM_addStyle
-// @run-at         document-idle
+// @run-at         document-start
 // @compatible     chrome
 // @license        GPL3
 // @noframes
@@ -29,7 +29,7 @@ const originalDocumentTitle = document.title;
 function getTitleElement() {
     return document.querySelector("#video_id > table > tbody > tr > td.text");
 }
-function getTitle() {
+function getAvid() {
     return getTitleElement()?.textContent;
 }
 function castContainer() {
@@ -79,6 +79,82 @@ function waitForElement(selector, index = 0) {
 // Functions
 // ---------------------------------------------------------------------------------------
 
+function addCSS() {
+    GM_addStyle(`
+        /* Saving space on top and left */
+        #toplogo {
+            height: 26px;
+        }
+        #toplogo .sitelogo {
+            display: none;
+        }
+        div#topbanner11 {
+            height: unset;
+        }
+        #content {
+            padding-top: 0;
+        }
+        div.boxtitle {
+            top: 0em;
+            padding: unset;
+        }
+
+        /* improve space on smaller viewports */
+        @media screen and (max-width: 1300px) {
+            #leftmenu {
+                display: none;
+            }
+            #rightcolumn {
+                margin-left: 10px;
+            }
+        }
+    `);
+
+    switch (true) {
+        // JAV Details
+        case /[a-z]{2}\/\?v=jav.*/.test(window.location.href): {
+            GM_addStyle(`
+                #video_info {
+                    min-width: 430px;
+                }
+
+                .added-links {
+                    margin-left: 107px;
+                    max-width: 340px;
+                }
+                .added-links-separator {
+                    margin-top: 10px;
+                }
+                
+                /* prevent video metadata from becoming too narrow */
+                #video_jacket_info > tbody > tr > td:nth-child(2) {
+                    min-width: 370px;
+                }
+
+                @media screen and (min-width: 1301px) {
+                    /* reduce FOUC for cover image */
+                    img#video_jacket_img {
+                        width: 800px;
+                        object-fit: contain;
+                    }
+                }
+
+                @media screen and (max-width: 1300px) {
+                    /* same size for cover and metadata area */
+                    #video_jacket_info > tbody > tr > td {
+                        width: 50%;
+                    }
+
+                    img#video_jacket_img {
+                        width: 100% !important;
+                    }
+                }
+            `);
+            break;
+        }
+    }
+}
+
 function removeRedirects() {
     let externalLinks = document.querySelectorAll("table[id^=comment] > tbody > tr:nth-child(1) > td.t > div a[href^='redirect.php']");
     for (let externalLink of externalLinks) {
@@ -102,7 +178,7 @@ async function initalCopyVideoTitleToClipboard(source) {
 
     if (authorsMode) {
         const textElement = getTitleElement();
-        let videoTitle = getTitle();
+        let videoTitle = getAvid();
 
         if (textElement && !copied && document.hasFocus()) {
             // only put once to clipboard
@@ -165,7 +241,7 @@ function runLocalSearch() {
 }
 
 function copyTitleToClipboard() {
-    return navigator.clipboard.writeText(getTitle());
+    return navigator.clipboard.writeText(getAvid());
 }
 
 function coverImageDownload() {
@@ -178,7 +254,7 @@ function coverImageDownload() {
 
     // rename cover image
     let casts = document.querySelectorAll("[id^=cast] > span.star > a");
-    let newFilename = getTitle() + " - ";
+    let newFilename = getAvid() + " - ";
     let iteration = casts.length;
     for (let cast of casts) {
         // also replace non-ASCII characters
@@ -237,6 +313,16 @@ function coverImageDownload() {
  * @param {*} className Adds a class
  */
 function addSearchLinksAndOpenAllButtons(name, href, className, separator = false) {
+    GM_addStyle(`
+        button.open-group {
+            margin-left: 8px;
+            padding: 2px 0;
+            width: 150px;
+            height: 22px;
+            user-select = none;
+        }
+    `);
+
     if (separator) {
         separator = "added-links-separator";
     }
@@ -262,11 +348,7 @@ function addSearchLinksAndOpenAllButtons(name, href, className, separator = fals
         const buttonTitle = className.replace(/-/g, " ");
 
         openAllButton.textContent = "Open " + buttonTitle;
-        openAllButton.style.marginLeft = "8px";
-        openAllButton.style.width = "160px";
-        openAllButton.style.height = "22px";
-        openAllButton.style.userSelect = "none";
-        openAllButton.className = "smallbutton";
+        openAllButton.className = "smallbutton open-group";
 
         openAllButton.addEventListener("click", function () {
             let linksToOpen = document.querySelectorAll(`.${className}.added-links a`);
@@ -377,7 +459,7 @@ function addImageSearchToCasts() {
 async function makeFavoriteCastVisible() {
     const favoriteClass = "favorite-star";
 
-    function addCustomCSS() {
+    function addCss() {
         GM_addStyle(`
             span[class^="icn_fav"].favorite-star {
                 background-image: url(${favoriteImage});
@@ -438,7 +520,7 @@ async function makeFavoriteCastVisible() {
         }
     }
 
-    addCustomCSS();
+    addCss();
 
     const starElements = document.querySelectorAll("[id^=star]");
     for (const element of starElements) {
@@ -507,47 +589,6 @@ async function main() {
         case /[a-z]{2}\/\?v=jav.*/.test(window.location.href): {
             console.log("JAV Details");
 
-            GM_addStyle(`
-                /* Saving space on top and left */
-                #toplogo {
-                    height: 26px;
-                }
-                #toplogo .sitelogo {
-                    display: none;
-                }
-                div#topbanner11 {
-                    height: unset;
-                }
-                #content {
-                    padding-top: 0;
-                }
-                div.boxtitle {
-                    top: 0em;
-                    padding: unset;
-                }
-
-                .added-links {
-                    margin-left: 107px;
-                    max-width: 340px;
-                }
-                .added-links-separator {
-                    margin-top: 10px;
-                }
-
-                @media screen and (max-width: 1300px) {
-                    #leftmenu {
-                        display: none;
-                    }
-                    #rightcolumn {
-                        margin-left: 10px;
-                    }
-                    img#video_jacket_img {
-                        width: 100%;
-                        object-fit: contain;
-                    }
-                }
-            `);
-
             // on low resolutions cover image get fixed size by site javascript
             removeResizingOfCoverImage();
 
@@ -562,51 +603,51 @@ async function main() {
 
             addSearchLinksAndOpenAllButtons(
                 "DuckDuckGo Screens",
-                "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + getTitle() + '"' + " JAV",
+                "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + getAvid() + '"' + " JAV",
                 ""
             );
             addSearchLinksAndOpenAllButtons(
                 "DuckDuckGo",
-                "https://duckduckgo.com/?kp=-2&q=" + '"' + getTitle() + '"' + " JAV",
+                "https://duckduckgo.com/?kp=-2&q=" + '"' + getAvid() + '"' + " JAV",
                 "",
                 true
             );
 
-            addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getTitle(), "Stream-Group");
-            addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getTitle(), "Stream-Group");
-            addSearchLinksAndOpenAllButtons("Jable | Stream", "https://jable.tv/search/" + getTitle() + "/", "Stream-Group");
-            addSearchLinksAndOpenAllButtons("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + getTitle(), "Stream-Group");
-            addSearchLinksAndOpenAllButtons("HORNYJAV | Stream", "https://hornyjav.com/?s=" + getTitle(), "Stream-Group", true);
+            addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getAvid(), "Stream-Group");
+            addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getAvid(), "Stream-Group");
+            addSearchLinksAndOpenAllButtons("Jable | Stream", "https://jable.tv/search/" + getAvid() + "/", "Stream-Group");
+            addSearchLinksAndOpenAllButtons("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + getAvid(), "Stream-Group");
+            addSearchLinksAndOpenAllButtons("HORNYJAV | Stream", "https://hornyjav.com/?s=" + getAvid(), "Stream-Group", true);
 
-            addSearchLinksAndOpenAllButtons("JavPlace | Torrent", "https://jav.place/?q=" + getTitle(), "");
-            addSearchLinksAndOpenAllButtons("JAVHOO | Torrent", "https://www.javhoo.com/en/search/" + getTitle(), "");
-            addSearchLinksAndOpenAllButtons("JAV-Menu | Torrent", "https://jjavbooks.com/en/" + getTitle(), "", true);
+            addSearchLinksAndOpenAllButtons("JavPlace | Torrent", "https://jav.place/?q=" + getAvid(), "");
+            addSearchLinksAndOpenAllButtons("JAVHOO | Torrent", "https://www.javhoo.com/en/search/" + getAvid(), "");
+            addSearchLinksAndOpenAllButtons("JAV-Menu | Torrent", "https://jjavbooks.com/en/" + getAvid(), "", true);
 
-            addSearchLinksAndOpenAllButtons("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + getTitle(), "GDrive-Group");
-            addSearchLinksAndOpenAllButtons("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getTitle(), "GDrive-Group");
-            addSearchLinksAndOpenAllButtons("JAVGG | Google Drive", "https://javgg.me/?s=" + getTitle(), "GDrive-Group", true);
+            addSearchLinksAndOpenAllButtons("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + getAvid(), "GDrive-Group");
+            addSearchLinksAndOpenAllButtons("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getAvid(), "GDrive-Group");
+            addSearchLinksAndOpenAllButtons("JAVGG | Google Drive", "https://javgg.me/?s=" + getAvid(), "GDrive-Group", true);
 
-            addSearchLinksAndOpenAllButtons("BLOGJAV.NET | RG", "https://blogjav.net/?s=" + getTitle(), "");
-            addSearchLinksAndOpenAllButtons("JAVDAILY | RG", "https://javdaily31.blogspot.com/search?q=" + getTitle(), "", true);
+            addSearchLinksAndOpenAllButtons("BLOGJAV.NET | RG", "https://blogjav.net/?s=" + getAvid(), "");
+            addSearchLinksAndOpenAllButtons("JAVDAILY | RG", "https://javdaily31.blogspot.com/search?q=" + getAvid(), "", true);
 
-            addSearchLinksAndOpenAllButtons("MissAV | RG | Stream", "https://missav.com/en/search/" + getTitle(), "RG-Group");
-            addSearchLinksAndOpenAllButtons("Supjav | RG", "https://supjav.com/?s=" + getTitle(), "RG-Group");
-            addSearchLinksAndOpenAllButtons("JAV Guru | RG | Stream", "https://jav.guru/?s=" + getTitle(), "RG-Group", true);
+            addSearchLinksAndOpenAllButtons("MissAV | RG | Stream", "https://missav.com/en/search/" + getAvid(), "RG-Group");
+            addSearchLinksAndOpenAllButtons("Supjav | RG", "https://supjav.com/?s=" + getAvid(), "RG-Group");
+            addSearchLinksAndOpenAllButtons("JAV Guru | RG | Stream", "https://jav.guru/?s=" + getAvid(), "RG-Group", true);
 
-            addSearchLinksAndOpenAllButtons("3xPlanet | Preview", "https://3xplanet.com/?s=" + getTitle(), "Preview-Group-2");
-            addSearchLinksAndOpenAllButtons("JAVAkiba | Preview", "https://javakiba.org/?s=" + getTitle(), "Preview-Group-2");
-            addSearchLinksAndOpenAllButtons("Video-JAV | Preview", "http://video-jav.net/?s=" + getTitle(), "Preview-Group-2", true);
+            addSearchLinksAndOpenAllButtons("3xPlanet | Preview", "https://3xplanet.com/?s=" + getAvid(), "Preview-Group-2");
+            addSearchLinksAndOpenAllButtons("JAVAkiba | Preview", "https://javakiba.org/?s=" + getAvid(), "Preview-Group-2");
+            addSearchLinksAndOpenAllButtons("Video-JAV | Preview", "http://video-jav.net/?s=" + getAvid(), "Preview-Group-2", true);
 
-            addSearchLinksAndOpenAllButtons("JAV Max Quality | Preview", "https://maxjav.com/?s=" + getTitle(), "Preview-Group-1");
+            addSearchLinksAndOpenAllButtons("JAV Max Quality | Preview", "https://maxjav.com/?s=" + getAvid(), "Preview-Group-1");
             addSearchLinksAndOpenAllButtons(
                 "Akiba-Online | Preview",
-                "https://www.akiba-online.com/search/?q=" + getTitle() + "&c%5Btitle_only%5D=1&o=date&search=" + getTitle(),
+                "https://www.akiba-online.com/search/?q=" + getAvid() + "&c%5Btitle_only%5D=1&o=date&search=" + getAvid(),
                 "Preview-Group-1",
                 true
             );
 
             // add Searches
-            addSearchLinksAndOpenAllButtons("Torrent-Search", "https://bt4g.org/search/" + getTitle() + "&orderby=size", "", true);
+            addSearchLinksAndOpenAllButtons("Torrent-Search", "https://bt4g.org/search/" + getAvid() + "&orderby=size", "", true);
 
             // add Cover Image Download button
             coverImageDownload();
@@ -764,5 +805,7 @@ async function main() {
     }
 }
 
+addCSS();
+
 // GM_setValue("authorsMode", true);
-main();
+document.addEventListener("DOMContentLoaded", main);

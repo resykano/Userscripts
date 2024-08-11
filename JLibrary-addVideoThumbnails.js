@@ -8,7 +8,7 @@
 // @match          *://*x75p.com/*/?v=*
 // @grant          GM_xmlhttpRequest
 // @grant          GM_addStyle
-// @run-at         document-idle
+// @run-at         document-start
 // @compatible     chrome
 // @license        GPL3
 // @noframes
@@ -16,24 +16,36 @@
 
 "use strict";
 
-function getTitleElement() {
-    return document.querySelector("#video_id > table > tbody > tr > td.text");
-}
-function getTitle() {
-    return getTitleElement()?.textContent;
+function getAvid() {
+    return document.querySelector("#video_id > table > tbody > tr > td.text")?.textContent;
 }
 
 // Add the necessary CSS styles
 function addCSS() {
     GM_addStyle(`
+        /* improve space on smaller viewports */
+        @media screen and (max-width: 1300px) {
+            #leftmenu {
+                display: none;
+            }
+            #rightcolumn {
+                margin-left: 10px;
+            }
+        }
+
+        /* prevent video metadata from becoming too narrow */
+        #video_jacket_info > tbody > tr > td:nth-child(2) {
+            min-width: 370px;
+        }
+
         #videoThumbnail {
             width: 100%;
             margin-top: 5px;
         }
-
         #videoThumbnail > img {
             width: 100%;
         }
+        /* no preview info */
         #videoThumbnail > p {
             border-radius: 5px;
             border: 2px solid coral;
@@ -45,17 +57,11 @@ function addCSS() {
             text-align: center;
             margin: auto;
         }
-        @media screen and (max-width: 1300px) {
-            #videoThumbnail {margin-left: unset;}
-        }
-        
-        #video_jacket_info > tbody > tr > td:nth-child(2) {
-            min-width: 500px;
-        }
     `);
 }
 
-function getVideoThumbnailsUrl(avid) {
+function getVideoThumbnailsUrl() {
+    const avid = getAvid();
     // search in background
     // let videoThumbnailsUrlFromJavStore = getVideoThumbnailsUrlFromJavStore(avid);
     let videoThumbnailsUrlFromBlogjav = getVideoThumbnailsUrlFromBlogjav(avid);
@@ -348,5 +354,6 @@ function findLinkInDocument(responseText, avid, selector) {
 // do nothing if cloudflare check happens
 if (!document.title.includes("Just a moment...")) {
     addCSS();
-    getVideoThumbnailsUrl(getTitle());
 }
+
+document.addEventListener("DOMContentLoaded", getVideoThumbnailsUrl);

@@ -57,11 +57,12 @@ function addCSS() {
 
 function getVideoThumbnailsUrl(avid) {
     // search in background
-    let videoPreviewUrlFromJavStore = getVideoThumbnailsUrlFromJavStore(avid);
+    // let videoThumbnailsUrlFromJavStore = getVideoThumbnailsUrlFromJavStore(avid);
+    let videoThumbnailsUrlFromBlogjav = getVideoThumbnailsUrlFromBlogjav(avid);
 
-    getVideoThumbnailsUrlFromBlogjav(avid).then((imageUrl) => {
+    getVideoThumbnailsUrlFromJavStore(avid).then((imageUrl) => {
         if (imageUrl === null || imageUrl === undefined) {
-            console.log("No preview image found BlogJAV");
+            console.log("No preview image found JavStore");
             attemptSecondVideoThumbnailsFetch();
         } else {
             console.log("Image URL from BlogJAV: ", imageUrl);
@@ -70,10 +71,9 @@ function getVideoThumbnailsUrl(avid) {
     });
 
     function attemptSecondVideoThumbnailsFetch() {
-        // getThumbnailsUrlFromJavStore(avid).then((imageUrl) => {
-        videoPreviewUrlFromJavStore.then((imageUrl) => {
+        videoThumbnailsUrlFromBlogjav.then((imageUrl) => {
             if (imageUrl === null || imageUrl === undefined) {
-                console.log(`No preview image found JavStore`);
+                console.log("No preview image found BlogJAV");
                 addVideoThumbnails(null);
             } else {
                 console.log("Image URL from JavStore: ", imageUrl);
@@ -148,7 +148,7 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
                 .replace("/th/", "/i/");
             if (/imagetwist/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
 
-            // check if only a picture removed image is shown, but not yet working
+            // check if only a picture removed image is shown
             return xmlhttpRequest(targetImageUrl, targetImageUrl.replace(/^(https?:\/\/[^\/#&]+).*$/, "$1"), 10000)
                 .then((result) => {
                     if (result.loadstuts) {
@@ -162,7 +162,7 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
                         ) {
                             return targetImageUrl;
                         } else {
-                            throw new Error("Only a removed image is shown");
+                            throw new Error('"Picture removed" placeholder');
                         }
                     } else {
                         throw new Error("Loading image URL");
@@ -188,7 +188,7 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
             return null;
         }
     } catch (error) {
-        console.error("Error fetching big preview image URL from BlogJAV:", error);
+        console.error("Error fetching preview image URL from BlogJAV:", error);
         return null;
     }
 }
@@ -217,20 +217,25 @@ async function getVideoThumbnailsUrlFromJavStore(avid) {
 
         const doc = new DOMParser().parseFromString(result.responseText, "text/html");
         const imageArray = doc.querySelectorAll('.news a font[size*="+1"],.news a img[alt*=".th"]');
-        if (imageArray.length > 0) {
-            let imageUrl = imageArray[imageArray.length - 1].parentElement.href;
-            if (imageArray[0].tagName === "IMG") {
-                imageUrl = imageArray[imageArray.length - 1].src;
-                imageUrl = imageUrl
-                    .replace("pixhost.org", "pixhost.to")
-                    .replace(".th", "")
-                    .replace("thumbs", "images")
-                    .replace("//t", "//img")
-                    .replace(/[\?*\"*]/g, "");
+        let imageUrl = imageArray[imageArray.length - 1].parentElement.href;
 
-                if (/imagetwist/gi.test(imageUrl)) imageUrl = imageUrl.replace(".jpg", ".jpeg");
+        if (imageArray.length > 0) {
+            if (!imageUrl.includes("http://")) {
+                if (imageArray[0].tagName === "IMG") {
+                    imageUrl = imageArray[imageArray.length - 1].src;
+                    imageUrl = imageUrl
+                        .replace("pixhost.org", "pixhost.to")
+                        .replace(".th", "")
+                        .replace("thumbs", "images")
+                        .replace("//t", "//img")
+                        .replace(/[\?*\"*]/g, "");
+
+                    if (/imagetwist/gi.test(imageUrl)) imageUrl = imageUrl.replace(".jpg", ".jpeg");
+                }
+                return imageUrl;
+            } else {
+                console.log('The image URL obtained from JavStore has been removed or failed to load: "Picture removed" placeholder');
             }
-            return imageUrl;
         }
         return null;
     }
@@ -244,7 +249,7 @@ async function getVideoThumbnailsUrlFromJavStore(avid) {
             return null;
         }
     } catch (error) {
-        console.error("Error fetching big preview image URL from JavStore:", error);
+        console.error("Error fetching preview image URL from JavStore:", error);
     }
 }
 

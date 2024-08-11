@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Video Thumbnails
 // @description    Inserts a video preview in form of thumbnails
-// @version        20240810
+// @version        20240811
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*/?v=*

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, full size commercial photos
-// @version        20240811
+// @version        20240811a
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -178,13 +178,13 @@ async function initalCopyVideoTitleToClipboard(source) {
 
     if (authorsMode) {
         const textElement = getTitleElement();
-        let videoTitle = getAvid();
+        let avid = getAvid();
 
         if (textElement && !copied && document.hasFocus()) {
             // only put once to clipboard
-            console.log(`${source}: ${videoTitle}`);
+            console.log(`${source}: ${avid}`);
 
-            copyTitleToClipboard(videoTitle)
+            copyTitleToClipboard(avid)
                 .then(() => {
                     copied = true;
                     // if tab was opened with link
@@ -533,8 +533,9 @@ async function makeFavoriteCastVisible() {
     }
 }
 
-function removeResizingOfCoverImage() {
-    const coverImage = document.querySelector("#video_jacket_img");
+async function removeResizingOfCoverImage() {
+    const coverImage = await waitForElement("#video_jacket_img");
+
     if (!coverImage) return;
 
     coverImage.removeAttribute("width");
@@ -588,9 +589,6 @@ async function main() {
         // JAV Details
         case /[a-z]{2}\/\?v=jav.*/.test(window.location.href): {
             console.log("JAV Details");
-
-            // on low resolutions cover image get fixed size by site javascript
-            removeResizingOfCoverImage();
 
             // add title textbox
             addTitleCopyPerClick();
@@ -805,7 +803,19 @@ async function main() {
     }
 }
 
-addCSS();
+function initializeBeforeRender() {
+    // GM_setValue("authorsMode", true);
 
-// GM_setValue("authorsMode", true);
+    addCSS();
+
+    switch (true) {
+        // JAV Details
+        case /[a-z]{2}\/\?v=jav.*/.test(window.location.href):
+            // on low resolutions cover image get fixed size by site javascript
+            removeResizingOfCoverImage();
+            break;
+    }
+}
+
+initializeBeforeRender();
 document.addEventListener("DOMContentLoaded", main);

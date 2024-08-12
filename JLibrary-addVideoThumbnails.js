@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Video Thumbnails
 // @description    Inserts a video preview in form of thumbnails
-// @version        20240811
+// @version        20240812
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*/?v=*
@@ -60,26 +60,27 @@ function addCSS() {
     `);
 }
 
-function getVideoThumbnailsUrl() {
+function getVideoThumbnailUrl() {
     const avid = getAvid();
-    // search in background
-    // let videoThumbnailsUrlFromJavStore = getVideoThumbnailsUrlFromJavStore(avid);
-    let videoThumbnailsUrlFromBlogjav = getVideoThumbnailsUrlFromBlogjav(avid);
+    // parallel search
+    let videoThumbnailUrlFromJavStore = getVideoThumbnailUrlFromJavStore(avid);
+    let videoThumbnailUrlFromBlogjav = getVideoThumbnailUrlFromBlogjav(avid);
 
-    getVideoThumbnailsUrlFromJavStore(avid).then((imageUrl) => {
+    // BlogJAV first, as it outputs a higher resolution and more preview images
+    videoThumbnailUrlFromBlogjav.then((imageUrl) => {
         if (imageUrl === null || imageUrl === undefined) {
-            console.log("No preview image found JavStore");
-            attemptSecondVideoThumbnailsFetch();
+            console.log("No preview image found on BlogJAV");
+            attemptSecondVideoThumbnailFetch();
         } else {
             console.log("Image URL from BlogJAV: ", imageUrl);
             addVideoThumbnails(imageUrl);
         }
     });
 
-    function attemptSecondVideoThumbnailsFetch() {
-        videoThumbnailsUrlFromBlogjav.then((imageUrl) => {
+    function attemptSecondVideoThumbnailFetch() {
+        videoThumbnailUrlFromJavStore.then((imageUrl) => {
             if (imageUrl === null || imageUrl === undefined) {
-                console.log("No preview image found BlogJAV");
+                console.log("No preview image found on JavStore");
                 addVideoThumbnails(null);
             } else {
                 console.log("Image URL from JavStore: ", imageUrl);
@@ -97,7 +98,7 @@ function getVideoThumbnailsUrl() {
 
             if (targetImageUrl === null) {
                 contentElement = document.createElement("p");
-                contentElement.innerText = "No Video Preview Image found";
+                contentElement.innerText = "No Video Preview found";
             } else {
                 contentElement = document.createElement("img");
                 contentElement.src = targetImageUrl;
@@ -113,20 +114,7 @@ function getVideoThumbnailsUrl() {
 }
 
 // Get big preview image URL from Blogjav
-async function getVideoThumbnailsUrlFromBlogjav(avid) {
-    async function searchLinkOnBlogjavWithBing(avid) {
-        // const searchUrl = `https://www.bing.com/search?q=${formatAvidForAmateurIds(avid)}+site:blogjav.net&mkt=ja-JP`;
-        const searchUrl = `https://www.bing.com/search?q=${avid}+site:blogjav.net&mkt=ja-JP`;
-        const result = await xmlhttpRequest(searchUrl, "", 10000);
-        if (!result.loadstuts) {
-            console.error("Connection error when searching on Bing");
-            return null;
-        }
-        const link = findLinkInDocument(result.responseText, avid, "#b_results .b_algo h2 a");
-        if (link === null) console.log("AVID not found in first results on Bing.");
-        return link;
-    }
-
+async function getVideoThumbnailUrlFromBlogjav(avid) {
     async function searchLinkOnBlogjav(avid) {
         // const searchUrl = `https://blogjav.net/?s=${formatAvidForAmateurIds(avid)}`;
         const searchUrl = `https://blogjav.net/?s=${avid}`;
@@ -183,11 +171,7 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
     }
 
     try {
-        // faster search on Blogjav
-        let link = await searchLinkOnBlogjavWithBing(avid);
-        if (!link) {
-            link = await searchLinkOnBlogjav(avid);
-        }
+        let link = await searchLinkOnBlogjav(avid);
         if (link) {
             return await fetchImageUrl(link.href);
         } else {
@@ -200,7 +184,7 @@ async function getVideoThumbnailsUrlFromBlogjav(avid) {
 }
 
 // Get big preview image URL from JavStore
-async function getVideoThumbnailsUrlFromJavStore(avid) {
+async function getVideoThumbnailUrlFromJavStore(avid) {
     async function searchLinkOnJavStore(avid) {
         const searchUrl = `https://javstore.net/search/${avid}.html`;
         const result = await xmlhttpRequest(searchUrl);
@@ -356,4 +340,4 @@ if (!document.title.includes("Just a moment...")) {
     addCSS();
 }
 
-document.addEventListener("DOMContentLoaded", getVideoThumbnailsUrl);
+document.addEventListener("DOMContentLoaded", getVideoThumbnailUrl);

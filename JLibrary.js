@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, full size commercial photos
-// @version        20240811a
+// @version        20240816
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -613,22 +613,21 @@ async function main() {
                 true
             );
 
+            addSearchLinksAndOpenAllButtons("JavPlace | alternative research platform", "https://jav.place/?q=" + getAvid(), "");
+            addSearchLinksAndOpenAllButtons("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + getAvid(), "", true);
+            
             addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getAvid(), "Stream-Group");
             addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getAvid(), "Stream-Group");
             addSearchLinksAndOpenAllButtons("Jable | Stream", "https://jable.tv/search/" + getAvid() + "/", "Stream-Group");
             addSearchLinksAndOpenAllButtons("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + getAvid(), "Stream-Group");
             addSearchLinksAndOpenAllButtons("HORNYJAV | Stream", "https://hornyjav.com/?s=" + getAvid(), "Stream-Group", true);
 
-            addSearchLinksAndOpenAllButtons("JavPlace | Torrent", "https://jav.place/?q=" + getAvid(), "");
-            addSearchLinksAndOpenAllButtons("JAVHOO | Torrent", "https://www.javhoo.com/en/search/" + getAvid(), "");
-            addSearchLinksAndOpenAllButtons("JAV-Menu | Torrent", "https://jjavbooks.com/en/" + getAvid(), "", true);
-
             addSearchLinksAndOpenAllButtons("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + getAvid(), "GDrive-Group");
             addSearchLinksAndOpenAllButtons("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getAvid(), "GDrive-Group");
             addSearchLinksAndOpenAllButtons("JAVGG | Google Drive", "https://javgg.me/?s=" + getAvid(), "GDrive-Group", true);
 
-            addSearchLinksAndOpenAllButtons("BLOGJAV.NET | RG", "https://blogjav.net/?s=" + getAvid(), "");
-            addSearchLinksAndOpenAllButtons("JAVDAILY | RG", "https://javdaily31.blogspot.com/search?q=" + getAvid(), "", true);
+            addSearchLinksAndOpenAllButtons("JAVDAILY | RG  (optional, needs login before search)", "https://javdaily31.blogspot.com/search?q=" + getAvid(), "");
+            addSearchLinksAndOpenAllButtons("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + getAvid(), "", true);
 
             addSearchLinksAndOpenAllButtons("MissAV | RG | Stream", "https://missav.com/en/search/" + getAvid(), "RG-Group");
             addSearchLinksAndOpenAllButtons("Supjav | RG", "https://supjav.com/?s=" + getAvid(), "RG-Group");

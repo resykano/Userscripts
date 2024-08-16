@@ -136,6 +136,8 @@ function addCSS() {
                     img#video_jacket_img {
                         width: 800px;
                         object-fit: contain;
+                        /* not too high, especially portraits */
+                        max-height: 800px;
                     }
                 }
 
@@ -556,7 +558,7 @@ async function removeResizingOfCoverImage() {
 }
 
 function setPromotionalPhotosToFullSize() {
-    const commercialPreviewImageLinks = document.querySelectorAll("#rightcolumn > div.previewthumbs > a");
+    const commercialPreviewImageLinks = document.querySelectorAll("#rightcolumn > div.previewthumbs > a:not(.btn_videoplayer)");
 
     commercialPreviewImageLinks.forEach((anchor) => {
         const img = anchor.querySelector("img");
@@ -735,12 +737,18 @@ async function main() {
             console.log("Search Page");
 
             // open Combination Search
-            document.querySelector("#ui-accordion-accordion-header-1 > span")?.click();
+            // document.querySelector("#ui-accordion-accordion-header-1 > span")?.click();
             break;
         }
         case /\/vl_searchbyid.php/.test(window.location.href): {
+            if (document.querySelector("#rightcolumn > p > em") && document.querySelector("#rightcolumn > div.titlebox")) {
+                console.log("no search result");
+
+                // TODO: include searches as in video details
+            }
+
             // open found links in same tab
-            document.querySelectorAll(".video > a").forEach(function (element) {
+            document.querySelectorAll(".video > a")?.forEach(function (element) {
                 element.removeAttribute("target");
             });
             break;

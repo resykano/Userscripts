@@ -36,12 +36,15 @@
 let copied = false;
 const url = window.location.href;
 const originalDocumentTitle = document.title;
+let avid = null;
 
 function getTitleElement() {
     return document.querySelector("#video_id > table > tbody > tr > td.text");
 }
 function getAvid() {
-    return getTitleElement()?.textContent;
+    if (!avid) {
+        avid = getTitleElement()?.textContent;
+    }
 }
 function castContainer() {
     return document.querySelector("#video_cast");
@@ -122,8 +125,9 @@ function addCSS() {
     `);
 
     switch (true) {
-        // JAV Details
-        case /[a-z]{2}\/\?v=jav.*/.test(url): {
+        // JAV Details & no video found
+        case /[a-z]{2}\/\?v=jav.*/.test(url):
+        case /\/vl_searchbyid.php/.test(url): {
             GM_addStyle(`
                 #video_info {
                     min-width: 430px;
@@ -131,7 +135,9 @@ function addCSS() {
 
                 .added-links {
                     margin-left: 107px;
-                    max-width: 340px;
+                    max-width: 370px;
+                    margin-left: auto;
+                    margin-right: auto;
                 }
                 .added-links-separator {
                     margin-top: 10px;
@@ -197,7 +203,6 @@ async function initalCopyVideoTitleToClipboard(source) {
 
     if (authorsMode) {
         const textElement = getTitleElement();
-        let avid = getAvid();
 
         if (textElement && !copied && document.hasFocus()) {
             // only put once to clipboard
@@ -260,7 +265,7 @@ function runLocalSearch() {
 }
 
 function copyTitleToClipboard() {
-    return navigator.clipboard.writeText(getAvid());
+    return navigator.clipboard.writeText(avid);
 }
 
 function coverImageDownload() {
@@ -273,7 +278,7 @@ function coverImageDownload() {
 
     // rename cover image
     let casts = document.querySelectorAll("[id^=cast] > span.star > a");
-    let newFilename = getAvid() + " - ";
+    let newFilename = avid + " - ";
     let iteration = casts.length;
     for (let cast of casts) {
         // also replace non-ASCII characters
@@ -323,6 +328,50 @@ function coverImageDownload() {
     );
 }
 
+function setSearchLinks() {
+    // add search links and buttons
+    addSearchLinkAndOpenAllButton(
+        "DuckDuckGo Screens",
+        "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
+        ""
+    );
+    addSearchLinkAndOpenAllButton("DuckDuckGo", "https://duckduckgo.com/?kp=-2&q=" + '"' + avid + '"' + " JAV", "", true);
+
+    addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/?q=" + avid, "");
+    addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
+
+    addSearchLinkAndOpenAllButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + avid, "Stream-Group");
+    addSearchLinkAndOpenAllButton("JAVHDMost | Stream", "https://javhdmost.com/?s=" + avid, "Stream-Group");
+    addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Stream-Group");
+    addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Stream-Group");
+    addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Stream-Group", true);
+
+    addSearchLinkAndOpenAllButton("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + avid, "GDrive-Group");
+    addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "GDrive-Group");
+    addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "GDrive-Group", true);
+
+    addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
+    addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
+
+    addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.com/en/search/" + avid, "RG-Group");
+    addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "RG-Group");
+    addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "RG-Group", true);
+
+    addSearchLinkAndOpenAllButton("3xPlanet | Preview", "https://3xplanet.com/?s=" + avid, "Preview-Group-2");
+    addSearchLinkAndOpenAllButton("JAVAkiba | Preview", "https://javakiba.org/?s=" + avid, "Preview-Group-2");
+    addSearchLinkAndOpenAllButton("Video-JAV | Preview", "http://video-jav.net/?s=" + avid, "Preview-Group-2", true);
+
+    addSearchLinkAndOpenAllButton("JAV Max Quality | Preview", "https://maxjav.com/?s=" + avid, "Preview-Group-1");
+    addSearchLinkAndOpenAllButton(
+        "Akiba-Online | Preview",
+        "https://www.akiba-online.com/search/?q=" + avid + "&c%5Btitle_only%5D=1&o=date&search=" + avid,
+        "Preview-Group-1",
+        true
+    );
+
+    addSearchLinkAndOpenAllButton("Torrent-Search", "https://bt4g.org/search/" + avid + "&orderby=size", "", true);
+}
+
 /**
  * Adds a search links and open all links buttons
  *
@@ -331,7 +380,7 @@ function coverImageDownload() {
  * @param {*} separator Adds a space on top
  * @param {*} className Adds a class
  */
-function addSearchLinksAndOpenAllButtons(name, href, className, separator = false) {
+function addSearchLinkAndOpenAllButton(name, href, className, separator = false) {
     GM_addStyle(`
         button.open-group {
             margin-left: 8px;
@@ -347,7 +396,8 @@ function addSearchLinksAndOpenAllButtons(name, href, className, separator = fals
     }
     if (className === "") className = undefined;
 
-    let existingContainer = castContainer();
+    // after the casting container or "search tips" if the search does not return any results
+    let existingContainer = castContainer() || document.querySelector("#rightcolumn > div.titlebox");
     let newElementContainer = document.createElement("div");
     newElementContainer.classList.add("added-links");
     newElementContainer.classList.add(separator);
@@ -392,7 +442,7 @@ function addSearchLinksAndOpenAllButtons(name, href, className, separator = fals
 }
 
 // Execute when button pressed with collecting comments for importing into Jdownloader
-async function executeCollectingComments(event) {
+async function collectingLinksFromCommentsAndRgGroup(event) {
     if (event.key === "<") {
         // press Open RG Group button
         document.querySelector("#video_info > div.added-links.added-links-separator.RG-Group > button")?.click();
@@ -761,6 +811,8 @@ async function main() {
     // do nothing if cloudflare check happens
     if (document.title.includes("Just a moment...")) return;
 
+    getAvid();
+
     switch (true) {
         // JAV Details
         case /[a-z]{2}\/\?v=jav.*/.test(url): {
@@ -772,60 +824,11 @@ async function main() {
             // adds posibility for local search but disabled by default as needs addinal scripts
             addLocalSearch();
 
+            // add search links
+            setSearchLinks();
+
             // increase commercial previews
             setPromotionalPhotosToFullSize();
-
-            addSearchLinksAndOpenAllButtons(
-                "DuckDuckGo Screens",
-                "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + getAvid() + '"' + " JAV",
-                ""
-            );
-            addSearchLinksAndOpenAllButtons(
-                "DuckDuckGo",
-                "https://duckduckgo.com/?kp=-2&q=" + '"' + getAvid() + '"' + " JAV",
-                "",
-                true
-            );
-
-            addSearchLinksAndOpenAllButtons("JavPlace | alternative research platform", "https://jav.place/?q=" + getAvid(), "");
-            addSearchLinksAndOpenAllButtons(
-                "JAV-Menu | alternative research platform",
-                "https://jjavbooks.com/en/" + getAvid(),
-                "",
-                true
-            );
-
-            addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getAvid(), "Stream-Group");
-            addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getAvid(), "Stream-Group");
-            addSearchLinksAndOpenAllButtons("Jable | Stream", "https://jable.tv/search/" + getAvid() + "/", "Stream-Group");
-            addSearchLinksAndOpenAllButtons("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + getAvid(), "Stream-Group");
-            addSearchLinksAndOpenAllButtons("HORNYJAV | Stream", "https://hornyjav.com/?s=" + getAvid(), "Stream-Group", true);
-
-            addSearchLinksAndOpenAllButtons("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + getAvid(), "GDrive-Group");
-            addSearchLinksAndOpenAllButtons("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getAvid(), "GDrive-Group");
-            addSearchLinksAndOpenAllButtons("JAVGG | Google Drive", "https://javgg.me/?s=" + getAvid(), "GDrive-Group", true);
-
-            addSearchLinksAndOpenAllButtons("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + getAvid(), "");
-            addSearchLinksAndOpenAllButtons("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + getAvid(), "", true);
-
-            addSearchLinksAndOpenAllButtons("MissAV | RG | Stream", "https://missav.com/en/search/" + getAvid(), "RG-Group");
-            addSearchLinksAndOpenAllButtons("Supjav | RG", "https://supjav.com/?s=" + getAvid(), "RG-Group");
-            addSearchLinksAndOpenAllButtons("JAV Guru | RG | Stream", "https://jav.guru/?s=" + getAvid(), "RG-Group", true);
-
-            addSearchLinksAndOpenAllButtons("3xPlanet | Preview", "https://3xplanet.com/?s=" + getAvid(), "Preview-Group-2");
-            addSearchLinksAndOpenAllButtons("JAVAkiba | Preview", "https://javakiba.org/?s=" + getAvid(), "Preview-Group-2");
-            addSearchLinksAndOpenAllButtons("Video-JAV | Preview", "http://video-jav.net/?s=" + getAvid(), "Preview-Group-2", true);
-
-            addSearchLinksAndOpenAllButtons("JAV Max Quality | Preview", "https://maxjav.com/?s=" + getAvid(), "Preview-Group-1");
-            addSearchLinksAndOpenAllButtons(
-                "Akiba-Online | Preview",
-                "https://www.akiba-online.com/search/?q=" + getAvid() + "&c%5Btitle_only%5D=1&o=date&search=" + getAvid(),
-                "Preview-Group-1",
-                true
-            );
-
-            // add Searches
-            addSearchLinksAndOpenAllButtons("Torrent-Search", "https://bt4g.org/search/" + getAvid() + "&orderby=size", "", true);
 
             // add Cover Image Download button
             coverImageDownload();
@@ -879,7 +882,7 @@ async function main() {
             makeFavoriteCastVisible();
 
             // window.addEventListener("keydown", executeCollectingComments, { once: true });
-            window.addEventListener("keydown", executeCollectingComments);
+            window.addEventListener("keydown", collectingLinksFromCommentsAndRgGroup);
 
             break;
         }
@@ -912,17 +915,21 @@ async function main() {
         }
         // Search Page
         case /\/search.php/.test(url): {
-            console.log("Search Page");
+            console.log("Advanced Search Section");
 
             // open Combination Search
             // document.querySelector("#ui-accordion-accordion-header-1 > span")?.click();
             break;
         }
+        // if video is not in JAVLibrary
         case /\/vl_searchbyid.php/.test(url): {
             if (document.querySelector("#rightcolumn > p > em") && document.querySelector("#rightcolumn > div.titlebox")) {
-                console.log("no search result");
+                console.log("no search results");
 
-                // TODO: include searches as in video details
+                avid = new URLSearchParams(window.location.search).get("keyword");
+                if (avid) {
+                    setSearchLinks();
+                }
             }
 
             // open found links in same tab
@@ -980,7 +987,7 @@ async function main() {
                     // await sleep(1000);
                     loadNextPage();
                 } else {
-                    window.addEventListener("keydown", executeCollectingComments);
+                    window.addEventListener("keydown", collectingLinksFromCommentsAndRgGroup);
                 }
             })();
 

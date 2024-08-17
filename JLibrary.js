@@ -1,17 +1,27 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, full size commercial photos
-// @version        20240816
+// @version        20240817
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
 // @match          *://*x75p.com/*
+// @match          *://javx357.com/*
+// @match          *://arcjav.com/*
+// @match          *://javgg.me/*
+// @match          *://maxjav.com/*
+// @match          *://jav.guru/*
+// @match          *://supjav.com/*
+// @match          *://missav.com/*
+// @match          *://video-jav.net/*
+// @match          *://www.akiba-online.com/search/*
 // @grant          GM_xmlHttpRequest
 // @grant          GM_download
 // @grant          GM_setClipboard
 // @grant          GM_getValue
 // @grant          GM_setValue
 // @grant          GM_addStyle
+// @grant          window.close
 // @run-at         document-start
 // @compatible     chrome
 // @license        GPL3
@@ -24,6 +34,7 @@
 // Config/Requirements
 // ---------------------------------------------------------------------------------------
 let copied = false;
+const url = window.location.href;
 const originalDocumentTitle = document.title;
 
 function getTitleElement() {
@@ -112,7 +123,7 @@ function addCSS() {
 
     switch (true) {
         // JAV Details
-        case /[a-z]{2}\/\?v=jav.*/.test(window.location.href): {
+        case /[a-z]{2}\/\?v=jav.*/.test(url): {
             GM_addStyle(`
                 #video_info {
                     min-width: 430px;
@@ -126,6 +137,12 @@ function addCSS() {
                     margin-top: 10px;
                 }
                 
+                /* preview video separated from promo photos */
+                a.btn_videoplayer {
+                    display: block;
+                    text-align: center;
+                }
+
                 /* prevent video metadata from becoming too narrow */
                 #video_jacket_info > tbody > tr > td:nth-child(2) {
                     min-width: 370px;
@@ -238,7 +255,7 @@ function runLocalSearch() {
         document.title = "Browser Local-Search";
         setTimeout(() => {
             document.title = originalDocumentTitle;
-        }, 100);
+        }, 50);
     }
 }
 
@@ -355,6 +372,13 @@ function addSearchLinksAndOpenAllButtons(name, href, className, separator = fals
         openAllButton.addEventListener("click", function () {
             let linksToOpen = document.querySelectorAll(`.${className}.added-links a`);
             let reversedLinks = Array.from(linksToOpen).reverse();
+
+            GM_setValue("externalSearchMode", true);
+
+            setTimeout(async () => {
+                GM_setValue("externalSearchMode", false);
+                console.log("externalSearchMode off");
+            }, 6000);
 
             reversedLinks.forEach(function (link) {
                 window.open(link.href);
@@ -571,12 +595,162 @@ function setPromotionalPhotosToFullSize() {
 }
 
 // ---------------------------------------------------------------------------------------
+// external search
+// ---------------------------------------------------------------------------------------
+
+class ExternalSearch {
+    constructor() {
+        this.currentURL = window.location.href;
+        this.hostname = window.location.hostname;
+    }
+
+    openLink(url, target = "_self") {
+        return window.open(url, target);
+    }
+
+    handleSearchResults() {
+        const selectors = ["[id^=post]", "#main div.row", "div.my-2.text-sm.text-nord4.truncate", ".post"];
+
+        let posts = [];
+
+        for (let selector of selectors) {
+            posts = document.querySelectorAll(selector);
+            if (posts.length > 0) break;
+        }
+
+        if (posts[0]?.textContent.includes("404") || posts.length === 0) {
+            if (document.title !== "Just a moment...") {
+                window.close();
+            }
+        } else if (posts.length === 1) {
+            const link = posts[0].querySelector("a");
+            if (link && !link.href.includes("#")) {
+                link.click();
+            } else {
+                window.close();
+            }
+        } else if (posts.length <= 30) {
+            let openWindowCheck;
+            posts.forEach((post, index) => {
+                const link = post.querySelector("a");
+                let title = post.textContent;
+
+                const paramName = "s";
+                let searchTerm = new URLSearchParams(window.location.search).get(paramName);
+                if (!searchTerm) {
+                    const url = window.location.href;
+                    const searchPattern = /\/search\/([^\/]+)/;
+                    searchTerm = url.match(searchPattern)[1];
+                }
+
+                if (link && title) {
+                    const regex = new RegExp(`\\b${searchTerm}\\b`, "i");
+                    if (regex.test(title)) {
+                        setTimeout(() => {
+                            openWindowCheck = window.open(link.href, "_blank");
+                        }, index * 100);
+                    }
+                }
+            });
+
+            if (openWindowCheck !== null) {
+                setTimeout(() => window.close(), 2000);
+            } else {
+                console.log("window.open blocked");
+            }
+        }
+    }
+
+    handleGDrivePages() {
+        const links = document.querySelectorAll("[id^=post] a");
+        let isFirstIteration = true;
+
+        links.forEach((link) => {
+            if (
+                link.textContent.includes("FHD") ||
+                link.textContent.includes("GOOGLE DRIVE – ALL IN ONE") ||
+                link.textContent.includes("GB") ||
+                link.textContent.includes("1080")
+            ) {
+                if (isFirstIteration) {
+                    isFirstIteration = false;
+                    link.scrollIntoView({ block: "center" });
+                }
+            }
+        });
+
+        if (this.hostname === "javgg.me") {
+            const postContentElement = document.querySelector("article.status-publish.hentry > div > p");
+            if (postContentElement && postContentElement.textContent.includes("drive.google.com/file/")) {
+                GM_setClipboard(postContentElement.textContent)
+                    .then(() => window.close())
+                    .catch((err) => console.error("Error copying content:", err));
+            }
+        }
+    }
+
+    handleRapidgatorPages() {
+        console.log("handleRapidgatorPages");
+
+        if (this.hostname === "jav.guru") {
+            const sources = document.querySelectorAll("#dl_jav_free");
+            for (let source of sources) {
+                if (source.innerText.includes("Rapidgator")) {
+                    const link = source.querySelector("a");
+                    if (link) {
+                        let onClickContent = link.getAttribute("onclick");
+                        if (onClickContent) {
+                            const match = onClickContent.match(/window\.open\s*\(\s*['"]([^'"]*)['"]/);
+                            if (match) {
+                                const url = match[1];
+                                onClickContent = onClickContent.replace(/window\.open\s*\([^)]*\)/, `window.open('${url}', '_self')`);
+                                link.setAttribute("onclick", onClickContent);
+                                setTimeout(() => link.click(), 100);
+                            } else {
+                                setTimeout(() => window.open(link.href, "_self"), 100);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            const link = document.querySelector("a[href*=rapidgator]");
+            if (link) {
+                console.log("handle details pages to get rapidgator links");
+                window.open(link.href, "_self");
+
+                setTimeout(() => {
+                    link.click();
+                    setTimeout(() => window.close(), 1000);
+                }, 100);
+            } else {
+                window.close();
+            }
+        }
+    }
+
+    main() {
+        switch (true) {
+            case this.currentURL.includes("/?s=") || this.currentURL.includes("/search"):
+                this.handleSearchResults();
+                break;
+            case ["arcjav.com", "javgg.me", "javx357.com"].includes(this.hostname):
+                this.handleGDrivePages();
+                break;
+            case ["jav.guru", "supjav.com", "missav.com"].includes(this.hostname):
+                this.handleRapidgatorPages();
+                break;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------------------
 
 async function main() {
     // Cloudflare restricted access
-    if (/.*/.test(window.location.href)) {
+    if (/.*/.test(url)) {
         if (document.title.includes("Access denied")) {
             setTimeout(() => {
                 location.reload();
@@ -589,7 +763,7 @@ async function main() {
 
     switch (true) {
         // JAV Details
-        case /[a-z]{2}\/\?v=jav.*/.test(window.location.href): {
+        case /[a-z]{2}\/\?v=jav.*/.test(url): {
             console.log("JAV Details");
 
             // add title textbox
@@ -614,8 +788,13 @@ async function main() {
             );
 
             addSearchLinksAndOpenAllButtons("JavPlace | alternative research platform", "https://jav.place/?q=" + getAvid(), "");
-            addSearchLinksAndOpenAllButtons("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + getAvid(), "", true);
-            
+            addSearchLinksAndOpenAllButtons(
+                "JAV-Menu | alternative research platform",
+                "https://jjavbooks.com/en/" + getAvid(),
+                "",
+                true
+            );
+
             addSearchLinksAndOpenAllButtons("JAV BIGO | Stream", "https://javbigo.com/?s=" + getAvid(), "Stream-Group");
             addSearchLinksAndOpenAllButtons("JAVHDMost | Stream", "https://javhdmost.com/?s=" + getAvid(), "Stream-Group");
             addSearchLinksAndOpenAllButtons("Jable | Stream", "https://jable.tv/search/" + getAvid() + "/", "Stream-Group");
@@ -626,7 +805,7 @@ async function main() {
             addSearchLinksAndOpenAllButtons("Arc JAV | Google Drive", "https://arcjav.com/?s=" + getAvid(), "GDrive-Group");
             addSearchLinksAndOpenAllButtons("JAVGG | Google Drive", "https://javgg.me/?s=" + getAvid(), "GDrive-Group", true);
 
-            addSearchLinksAndOpenAllButtons("JAVDAILY | RG  (optional, needs login before search)", "https://javdaily31.blogspot.com/search?q=" + getAvid(), "");
+            addSearchLinksAndOpenAllButtons("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + getAvid(), "");
             addSearchLinksAndOpenAllButtons("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + getAvid(), "", true);
 
             addSearchLinksAndOpenAllButtons("MissAV | RG | Stream", "https://missav.com/en/search/" + getAvid(), "RG-Group");
@@ -705,13 +884,13 @@ async function main() {
             break;
         }
         // Redirect Page
-        case /\/redirect.php/.test(window.location.href): {
+        case /\/redirect.php/.test(url): {
             document.querySelector("#ckbSkipURLWarning").click();
             document.querySelector("#redirection").click();
             break;
         }
         // Video Star Listings
-        case /\/vl_star.php/.test(window.location.href): {
+        case /\/vl_star.php/.test(url): {
             console.log("Video Star Listings");
 
             // ToDo: highlight visited videos
@@ -732,14 +911,14 @@ async function main() {
             break;
         }
         // Search Page
-        case /\/search.php/.test(window.location.href): {
+        case /\/search.php/.test(url): {
             console.log("Search Page");
 
             // open Combination Search
             // document.querySelector("#ui-accordion-accordion-header-1 > span")?.click();
             break;
         }
-        case /\/vl_searchbyid.php/.test(window.location.href): {
+        case /\/vl_searchbyid.php/.test(url): {
             if (document.querySelector("#rightcolumn > p > em") && document.querySelector("#rightcolumn > div.titlebox")) {
                 console.log("no search result");
 
@@ -752,7 +931,7 @@ async function main() {
             });
             break;
         }
-        case /\/videocomments.php/.test(window.location.href): {
+        case /\/videocomments.php/.test(url): {
             console.log("Comments Page");
 
             async function loadNextPage() {
@@ -807,6 +986,119 @@ async function main() {
 
             break;
         }
+        // batch external download link and preview searches
+        case /^https?:\/\/javx357\.com\/.*/i.test(url):
+        case /^https?:\/\/arcjav\.com\/.*/i.test(url):
+        case /^https?:\/\/javgg\.me\/.*/i.test(url):
+        case /^https?:\/\/maxjav\.com\/.*/i.test(url):
+        case /^https?:\/\/jav\.guru\/.*/i.test(url):
+        case /^https?:\/\/supjav\.com\/.*/i.test(url):
+        case /^https?:\/\/missav\.com\/.*/i.test(url):
+        case /^https?:\/\/video-jav\.net\/.*/i.test(url):
+        case /^https?:\/\/javakiba\.org\/.*/i.test(url): {
+            let externalSearchMode = await GM_getValue("externalSearchMode", false);
+            if (externalSearchMode) {
+                const externalSearcher = new ExternalSearch();
+                externalSearcher.main();
+            }
+            break;
+        }
+        // copy GDrive & Rapidgator links into clipboard for JDownloader Linkgrabber and auto close
+        case /^https:\/\/drive\.google\.com\/uc.*/i.test(url):
+        case /^https:\/\/drive\.google\.com\/file\/.*/i.test(url):
+        case /^https:\/\/rapidgator\.net\/.*/i.test(url): {
+            let externalSearchMode = await GM_getValue("externalSearchMode", false);
+            if (externalSearchMode) {
+                const urls = ["https://drive.google.com", "https://rapidgator.net/file/*"];
+                const currentUrl = window.location.href;
+                const match = urls.some((url) => currentUrl.match(url));
+
+                if (match) {
+                    // Clipboard operation and window close function
+                    function copyToClipboardAndClose() {
+                        // (clipboard needs focus else gone)
+                        // navigator.clipboard.writeText(location.href);
+                        GM_setClipboard(location.href);
+                        setTimeout(() => {
+                            window.close();
+                        }, 100);
+                    }
+
+                    copyToClipboardAndClose();
+                }
+
+                if (document.body.textContent.includes("404 File not found")) {
+                    window.close();
+                }
+            }
+            break;
+        }
+        // Akiba auto search and open
+        case /^https?:\/\/www\.akiba-online\.com\/search\/.*/i.test(url): {
+            function search() {
+                // Extract the current parameter
+                const paramName = "search";
+                const searchTerm = new URLSearchParams(window.location.search).get(paramName);
+
+                if (searchTerm) {
+                    document
+                        .querySelector(
+                            "#top > div.p-body > div > div.uix_contentWrapper > div > div > div > form > div > dl > dd > div > div.formSubmitRow-controls > button"
+                        )
+                        .click();
+
+                    // close window if no result
+                    setTimeout(() => {
+                        if (document.querySelector("body > div.flashMessage.is-active > div").textContent === "No results found.") {
+                            window.close();
+                        }
+                    }, 200);
+                }
+            }
+
+            function autoOpenResults() {
+                let posts = document.querySelectorAll("div.block-container > ol > li");
+                if (posts.length === 1) {
+                    let post = posts[0];
+                    let childLink = post.querySelector("a");
+
+                    childLink?.click();
+                } else if (posts.length >= 2) {
+                    const paramName = "q";
+                    const searchTerm = new URLSearchParams(window.location.search).get(paramName);
+                    let postTitle = document.querySelectorAll("div.block-container > ol > li h3 a");
+
+                    let fileJokerExclusive = document.querySelector("div.block-container > ol > li span.label--royalBlue");
+                    if (
+                        fileJokerExclusive &&
+                        fileJokerExclusive.parentElement.textContent.toLowerCase().includes(searchTerm.toLowerCase())
+                    ) {
+                        fileJokerExclusive.parentElement?.click();
+                        return;
+                    }
+
+                    for (let i = 0; i < postTitle.length; i++) {
+                        let title = postTitle[i];
+
+                        if (!title.textContent.includes(searchTerm)) {
+                            title.parentElement.parentElement.parentElement.parentElement.style.display = "none";
+                        } else {
+                            window.open(title.href, "_blank");
+                        }
+                    }
+                    setTimeout(function () {
+                        window.close();
+                    }, 500);
+                }
+            }
+
+            // use get parameter for search with form as only post parameters are allowed
+            search();
+
+            // open result if only one result saves clicking
+            autoOpenResults();
+            break;
+        }
     }
 }
 
@@ -817,7 +1109,7 @@ function initializeBeforeRender() {
 
     switch (true) {
         // JAV Details
-        case /[a-z]{2}\/\?v=jav.*/.test(window.location.href):
+        case /[a-z]{2}\/\?v=jav.*/.test(url):
             // on low resolutions cover image get fixed size by site javascript
             removeResizingOfCoverImage();
             break;

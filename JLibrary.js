@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, full size commercial photos
-// @version        20240817
+// @version        20240817a
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -425,6 +425,7 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
 
             GM_setValue("externalSearchMode", true);
 
+            // TODO: needs a more solid solution without brute force
             setTimeout(async () => {
                 GM_setValue("externalSearchMode", false);
                 console.log("externalSearchMode off");
@@ -817,6 +818,15 @@ async function main() {
         // JAV Details
         case /[a-z]{2}\/\?v=jav.*/.test(url): {
             console.log("JAV Details");
+
+            // TODO: needs a more solid solution without brute force
+            let externalSearchMode = await GM_getValue("externalSearchMode", false);
+            if (externalSearchMode) {
+                setTimeout(async () => {
+                    GM_setValue("externalSearchMode", false);
+                    console.log("externalSearchMode off");
+                }, 2000);
+            }
 
             // add title textbox
             addTitleCopyPerClick();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240825c
+// @version        20240825d
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -396,9 +396,9 @@ function setSearchLinks() {
     addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
     addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
 
-    addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.com/en/search/" + avid, "RG-Group");
-    addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "RG-Group");
-    addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "RG-Group", true);
+    addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.com/en/search/" + avid, "Rapidgator-Group");
+    addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Rapidgator-Group");
+    addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "Rapidgator-Group", true);
 
     addSearchLinkAndOpenAllButton("3xPlanet | Preview", "https://3xplanet.com/?s=" + avid, "Preview-Group-2");
     addSearchLinkAndOpenAllButton("JAVAkiba | Preview", "https://javakiba.org/?s=" + avid, "Preview-Group-2");
@@ -482,7 +482,7 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
 async function collectingLinksFromCommentsAndRgGroup(event) {
     if (event.key === "<") {
         // press Open RG Group button
-        document.querySelector("#video_info > div.added-links.added-links-separator.RG-Group > button")?.click();
+        document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group > button")?.click();
 
         // go to comments page, if not already there
         const allCommentsLink = document.querySelector("#video_comments_all > a");
@@ -508,7 +508,6 @@ async function collectingLinksFromCommentsAndRgGroup(event) {
 function copyContentsToClipboard() {
     const commentsElement = document.querySelector("#video_comments");
     if (commentsElement) {
-        // TODO: Filter Rapidgator Links
         const commentsContent = commentsElement.innerText;
         GM_setClipboard(commentsContent);
     }
@@ -790,30 +789,30 @@ class ExternalSearch {
 
         if (this.hostname === "jav.guru") {
             const sources = document.querySelectorAll("#dl_jav_free");
-            const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const rapidgatorSources = Array.from(sources).filter((source) => source.innerText.includes("Rapidgator"));
 
-            for (let source of sources) {
-                if (source.innerText.includes("Rapidgator")) {
-                    const link = source.querySelector("a");
-                    if (link) {
-                        let onClickContent = link.getAttribute("onclick");
-                        if (onClickContent) {
-                            const match = onClickContent.match(/window\.open\s*\(\s*['"]([^'"]*)['"]/);
-                            if (match) {
-                                const url = match[1];
-                                onClickContent = onClickContent.replace(/window\.open\s*\([^)]*\)/, `window.open('${url}', '_self')`);
-                                link.setAttribute("onclick", onClickContent);
-                                link.click();
-                                await delay(100);
-                            } else {
-                                window.open(link.href, "_self");
-                                await delay(100);
-                            }
+            if (rapidgatorSources.length === 0) {
+                window.close();
+                return;
+            }
+
+            for (let source of rapidgatorSources) {
+                const link = source.querySelector("a");
+                if (link) {
+                    let onClickContent = link.getAttribute("onclick");
+                    if (onClickContent) {
+                        const match = onClickContent.match(/window\.open\s*\(\s*['"]([^'"]*)['"]/);
+                        if (match) {
+                            const url = match[1];
+                            onClickContent = onClickContent.replace(/window\.open\s*\([^)]*\)/, `window.open('${url}', '_self')`);
+                            link.setAttribute("onclick", onClickContent);
+                            link.click();
+                        } else {
+                            window.open(link.href, "_self");
                         }
                     }
                 }
             }
-            window.close();
         } else {
             const link = document.querySelector("a[href*=rapidgator]");
             if (link) {

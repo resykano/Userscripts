@@ -5,7 +5,8 @@
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*/?v=*
-// @match          *://*x75p.com/*/?v=*
+// @match          *://x75p.com/*/?v=*
+// @match          *://*.y78k.com/?v=*
 // @grant          GM_xmlhttpRequest
 // @grant          GM_addStyle
 // @run-at         document-start

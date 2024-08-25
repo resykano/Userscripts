@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240825
+// @version        20240825a
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -171,6 +171,36 @@ function addCSS() {
                     img#video_jacket_img {
                         width: 100% !important;
                     }
+                }
+
+                /* addImageSearchToCasts */
+                .customButton {
+                    cursor: default;
+                    background-color: buttonface;
+                    padding-block: 2px;
+                    padding-inline: 6px;
+                    border-width: 1px;
+                    border-style: solid;
+                    border-color: #767676;
+                    border-radius: 2px;
+                    color: black;
+                    transition: background-color 0.3s ease;
+                    user-select: none;
+                }
+                .customButton:visited {
+                    color: #aaa;
+                }
+                .customButton:hover {
+                    background-color: #e0e0e0;
+                }
+
+                /* addSearchLinkAndOpenAllButton */
+                button.open-group {
+                    margin-left: 8px;
+                    padding: 3px;
+                    width: 150px;
+                    height: 22px;
+                    user-select = none;
                 }
             `);
             break;
@@ -394,15 +424,7 @@ function setSearchLinks() {
  * @param {*} className Adds a class
  */
 function addSearchLinkAndOpenAllButton(name, href, className, separator = false) {
-    GM_addStyle(`
-        button.open-group {
-            margin-left: 8px;
-            padding: 2px 0;
-            width: 150px;
-            height: 22px;
-            user-select = none;
-        }
-    `);
+    // styles in addCSS
 
     if (separator) {
         separator = "added-links-separator";
@@ -492,27 +514,7 @@ function copyContentsToClipboard() {
 }
 
 function addImageSearchToCasts() {
-    GM_addStyle(`
-        .customButton {
-            cursor: default;
-            background-color: buttonface;
-            padding-block: 2px;
-            padding-inline: 6px;
-            border-width: 1px;
-            border-style: solid;
-            border-color: #767676;
-            border-radius: 2px;
-            color: black;
-            transition: background-color 0.3s ease;
-            user-select: none;
-        }
-        .customButton:visited {
-            color: #aaa;
-        }
-        .customButton:hover {
-            background-color: #e0e0e0;
-        }
-    `);
+    // styles in addCSS
 
     let castElements = document.querySelectorAll("[id^=cast]");
     castElements.forEach(function (element) {
@@ -536,14 +538,34 @@ function addImageSearchToCasts() {
             element.appendChild(span);
         }
 
+        addButton("XSList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
+        addButton("Yandex", "https://yandex.com/images/search?text=");
         addButton("V2PH", "https://www.v2ph.com/search/?q=");
-        addButton("JT", "https://japanesethumbs.com/photo/?model=");
-        addButton("JB", "https://japanesebeauties.one/search.php?model=");
-        addButton("JJG", "https://jjgirls.com/match.php?model=");
-        addButton("KT", "https://kawaiithong.com/search_kawaii_pics/");
-        addButton("XSL", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org Photo Gallery ");
-        addButton("Y", "https://yandex.com/images/search?text=");
+        addButton("JJGirls", "https://jjgirls.com/match.php?model=");
+        addButton("KawaiiThong", "https://kawaiithong.com/search_kawaii_pics/");
     });
+}
+
+function addReverseImageSearchToCasts() {
+    let castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
+
+    function addButton(text, link) {
+        let button = document.createElement("button");
+        button.textContent = text;
+        button.className = "smallbutton open-group";
+        button.style = "width: unset";
+        button.onclick = function () {
+            window.open(link, "_blank");
+        };
+
+        let span = document.createElement("span");
+        span.style = "display: block; margin-top: 5px";
+        span.appendChild(button);
+
+        castContainer.appendChild(span);
+    }
+
+    addButton("Find Cast with Reverse Image Search", "https://xslist.org/en/searchByImage");
 }
 
 async function makeFavoriteCastVisible() {
@@ -913,6 +935,7 @@ async function main() {
             }
 
             addImageSearchToCasts();
+            addReverseImageSearchToCasts();
             makeFavoriteCastVisible();
 
             // window.addEventListener("keydown", executeCollectingComments, { once: true });

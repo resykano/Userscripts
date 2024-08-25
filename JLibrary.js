@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240825a
+// @version        20240825b
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -484,7 +484,7 @@ async function collectingLinksFromCommentsAndRgGroup(event) {
         // press Open RG Group button
         document.querySelector("#video_info > div.added-links.added-links-separator.RG-Group > button")?.click();
 
-        // go to all comments, if not already there
+        // go to comments page, if not already there
         const allCommentsLink = document.querySelector("#video_comments_all > a");
         if (allCommentsLink) {
             // open link
@@ -508,6 +508,7 @@ async function collectingLinksFromCommentsAndRgGroup(event) {
 function copyContentsToClipboard() {
     const commentsElement = document.querySelector("#video_comments");
     if (commentsElement) {
+        // TODO: Filter Rapidgator Links
         const commentsContent = commentsElement.innerText;
         GM_setClipboard(commentsContent);
     }
@@ -756,7 +757,7 @@ class ExternalSearch {
         }
     }
 
-    handleGDrivePages() {
+    handleGoogleDrivePages() {
         const links = document.querySelectorAll("[id^=post] a");
         let isFirstIteration = true;
 
@@ -784,11 +785,13 @@ class ExternalSearch {
         }
     }
 
-    handleRapidgatorPages() {
+    async handleRapidgatorPages() {
         console.log("handleRapidgatorPages");
 
         if (this.hostname === "jav.guru") {
             const sources = document.querySelectorAll("#dl_jav_free");
+            const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
             for (let source of sources) {
                 if (source.innerText.includes("Rapidgator")) {
                     const link = source.querySelector("a");
@@ -800,16 +803,17 @@ class ExternalSearch {
                                 const url = match[1];
                                 onClickContent = onClickContent.replace(/window\.open\s*\([^)]*\)/, `window.open('${url}', '_self')`);
                                 link.setAttribute("onclick", onClickContent);
-                                setTimeout(() => link.click(), 100);
+                                link.click();
+                                await delay(100);
                             } else {
-                                setTimeout(() => window.open(link.href, "_self"), 100);
+                                window.open(link.href, "_self");
+                                await delay(100);
                             }
                         }
                     }
-                } else {
-                    window.close();
                 }
             }
+            window.close();
         } else {
             const link = document.querySelector("a[href*=rapidgator]");
             if (link) {
@@ -832,7 +836,7 @@ class ExternalSearch {
                 this.handleSearchResults();
                 break;
             case ["arcjav.com", "javgg.me", "javx357.com"].includes(this.hostname):
-                this.handleGDrivePages();
+                this.handleGoogleDrivePages();
                 break;
             case ["jav.guru", "supjav.com", "missav.com"].includes(this.hostname):
                 this.handleRapidgatorPages();

@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240820
+// @version        20240825
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
-// @match          *://*x75p.com/*
+// @match          *://x75p.com/*
+// @match          *://*.y78k.com/*
 // @match          *://javx357.com/*
 // @match          *://arcjav.com/*
 // @match          *://javgg.me/*
@@ -435,13 +436,14 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
             let linksToOpen = document.querySelectorAll(`.${className}.added-links a`);
             let reversedLinks = Array.from(linksToOpen).reverse();
 
+            // allow batch search on external sites
             GM_setValue("externalSearchMode", true);
 
             // TODO: needs a more solid solution without brute force
             setTimeout(async () => {
                 GM_setValue("externalSearchMode", false);
                 console.log("externalSearchMode off");
-            }, 6000);
+            }, 7000);
 
             reversedLinks.forEach(function (link) {
                 window.open(link.href);
@@ -671,7 +673,16 @@ class ExternalSearch {
     }
 
     handleSearchResults() {
-        const selectors = ["[id^=post]", "#main div.row", "div.my-2.text-sm.text-nord4.truncate", ".post"];
+        const selectors = [
+            //default
+            "[id^=post]",
+            //jav.guru
+            "#main div.row",
+            //missjav.com
+            "div.my-2.text-sm.text-nord4.truncate",
+            //supjav.com
+            ".post",
+        ];
 
         let posts = [];
 
@@ -773,6 +784,8 @@ class ExternalSearch {
                             }
                         }
                     }
+                } else {
+                    window.close();
                 }
             }
         } else {
@@ -830,13 +843,13 @@ async function main() {
         case /[a-z]{2}\/\?v=jav.*/.test(url): {
             console.log("JAV Details");
 
-            // TODO: needs a more solid solution without brute force
+            // TODO: needs a more solid solution than just a blind timeout
             let externalSearchMode = await GM_getValue("externalSearchMode", false);
             if (externalSearchMode) {
                 setTimeout(async () => {
                     GM_setValue("externalSearchMode", false);
                     console.log("externalSearchMode off");
-                }, 4000);
+                }, 5000);
             }
 
             // add title textbox
@@ -1120,11 +1133,19 @@ async function main() {
                 }
             }
 
-            // use get parameter for search with form as only post parameters are allowed
-            search();
+            let externalSearchMode = await GM_getValue("externalSearchMode", false);
+            if (externalSearchMode) {
+                // if this url then no result, so close window
+                if (/^https?:\/\/www\.akiba-online\.com\/search\/search/i.test(url)) {
+                    window.close();
+                }
 
-            // open result if only one result saves clicking
-            autoOpenResults();
+                // use get parameter for search with form as only post parameters are allowed
+                search();
+
+                // open result if only one result saves clicking
+                autoOpenResults();
+            }
             break;
         }
     }
@@ -1145,4 +1166,4 @@ function initializeBeforeRender() {
 }
 
 initializeBeforeRender();
-document.addEventListener("DOMContentLoaded", main);
+document.addEventListener("DOMContentLoaded", main, { once: true });

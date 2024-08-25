@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240825b
+// @version        20240825c
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -539,7 +539,7 @@ function addImageSearchToCasts() {
             element.appendChild(span);
         }
 
-        addButton("XSList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
+        addButton("XsList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
         addButton("Yandex", "https://yandex.com/images/search?text=");
         addButton("V2PH", "https://www.v2ph.com/search/?q=");
         addButton("JJGirls", "https://jjgirls.com/match.php?model=");
@@ -547,7 +547,7 @@ function addImageSearchToCasts() {
     });
 }
 
-function addReverseImageSearchToCasts() {
+function addFaceRecognitionSearchToCasts() {
     let castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
 
     function addButton(text, link) {
@@ -566,7 +566,7 @@ function addReverseImageSearchToCasts() {
         castContainer.appendChild(span);
     }
 
-    addButton("Find Cast with Reverse Image Search", "https://xslist.org/en/searchByImage");
+    addButton("Find cast with facial recognition", "https://xslist.org/en/searchByImage");
 }
 
 async function makeFavoriteCastVisible() {
@@ -939,7 +939,7 @@ async function main() {
             }
 
             addImageSearchToCasts();
-            addReverseImageSearchToCasts();
+            addFaceRecognitionSearchToCasts();
             makeFavoriteCastVisible();
 
             // window.addEventListener("keydown", executeCollectingComments, { once: true });

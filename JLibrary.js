@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240825d
+// @version        20240826
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -136,11 +136,26 @@ function addCSS() {
                 .added-links {
                     margin-left: 107px;
                     max-width: 370px;
+                    height: 17px;
+                    display: flex;
+                    align-items: flex-end;
+                    justify-content: space-between;
                 }
                 .added-links-separator {
                     margin-top: 10px;
                 }
-                
+
+                /* addSearchLinkAndOpenAllButton & addFaceRecognitionSearchToCasts */
+                button.smallbutton-mod {
+                    margin-left: 8px;
+                    margin-top: 0;
+                    margin-bottom: 0;
+                    padding: 3px;
+                    width: 150px;
+                    height: 22px;
+                    user-select = none;
+                }
+
                 /* preview video separated from advertising photos */
                 a.btn_videoplayer {
                     display: block;
@@ -193,15 +208,6 @@ function addCSS() {
                 .customButton:hover {
                     background-color: #e0e0e0;
                 }
-
-                /* addSearchLinkAndOpenAllButton */
-                button.open-group {
-                    margin-left: 8px;
-                    padding: 3px;
-                    width: 150px;
-                    height: 22px;
-                    user-select = none;
-                }
             `);
             break;
         }
@@ -210,7 +216,11 @@ function addCSS() {
             GM_addStyle(`
                 .added-links {
                     margin-left: 107px;
-                    max-width: 370px;
+                    height: 17px;
+                    display: flex;
+                    align-items: flex-end;
+                    justify-content: space-between;
+                    max-width: 400px;
                     margin-left: auto;
                     margin-right: auto;
                 }
@@ -342,23 +352,14 @@ function coverImageDownload() {
                 headers: { referer: coverPictureUrl, origin: coverPictureUrl },
                 name: newFilename,
                 onload: function (download) {
-                    const coverPictureBlob = download.blob;
-
-                    // Create a Blob URL for the image
-                    const blobUrl = window.URL.createObjectURL(coverPictureBlob);
-
                     // Create an invisible <a> element
                     const downloadLink = document.createElement("a");
 
                     // Set the Blob URL as the HREF value and the filename for download
-                    downloadLink.href = blobUrl;
                     downloadLink.setAttribute("download", newFilename);
 
                     // Trigger the click event on the invisible <a> element
                     downloadLink.click();
-
-                    // Revoke the Blob URL to free up memory
-                    window.URL.revokeObjectURL(blobUrl);
                 },
                 onerror: function (error) {
                     console.error("Download failed:", error);
@@ -437,9 +438,6 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
     newElementContainer.classList.add("added-links");
     newElementContainer.classList.add(separator);
     newElementContainer.classList.add(className);
-    newElementContainer.style.display = "flex";
-    newElementContainer.style.alignItems = "flex-end";
-    newElementContainer.style.justifyContent = "space-between";
 
     let newElement = document.createElement("a");
     newElement.href = href;
@@ -452,7 +450,7 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
         const buttonTitle = className.replace(/-/g, " ");
 
         openAllButton.textContent = "Open " + buttonTitle;
-        openAllButton.className = "smallbutton open-group";
+        openAllButton.className = "smallbutton smallbutton-mod";
 
         openAllButton.addEventListener("click", function () {
             let linksToOpen = document.querySelectorAll(`.${className}.added-links a`);
@@ -479,28 +477,44 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
 }
 
 // Execute when button pressed with collecting comments for importing into Jdownloader
-async function collectingLinksFromCommentsAndRgGroup(event) {
-    if (event.key === "<") {
-        // press Open RG Group button
-        document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group > button")?.click();
+function collectingLinksFromCommentsAndRgGroup() {
+    // press Open Rapidgator Group button
+    document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group > button")?.click();
 
-        // go to comments page, if not already there
-        const allCommentsLink = document.querySelector("#video_comments_all > a");
-        if (allCommentsLink) {
-            // open link
-            GM_setValue("executingCollectingComments", true);
-            setTimeout(() => {
-                window.open(allCommentsLink.href, "_self");
-            }, 200);
-        } else if (document.querySelector("#rightcolumn > div.page_selector > a.page.last")) {
-            // if already on comments page
-            GM_setValue("executingCollectingComments", true);
-            location.reload();
-        } else {
-            copyContentsToClipboard();
-            // alert("No more comments!");
-        }
+    // go to comments page, if not already there
+    const allCommentsLink = document.querySelector("#video_comments_all > a");
+    if (allCommentsLink) {
+        // open link
+        GM_setValue("executingCollectingComments", true);
+        setTimeout(() => {
+            window.open(allCommentsLink.href, "_self");
+        }, 200);
+    } else if (document.querySelector("#rightcolumn > div.page_selector > a.page.last")) {
+        // if already on comments page
+        GM_setValue("executingCollectingComments", true);
+        location.reload();
+    } else {
+        copyContentsToClipboard();
+        // alert("No more comments!");
     }
+}
+
+function collectingLinksFromCommentsAndRgGroupButton() {
+    const target = document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group ~ div");
+
+    function addButton(text, action) {
+        let button = document.createElement("button");
+        button.textContent = text;
+        button.className = "smallbutton smallbutton-mod";
+        button.style = "position: relative; top: 7px;";
+        button.onclick = function () {
+            action();
+        };
+
+        target.appendChild(button);
+    }
+
+    addButton("+ Links from Comments", collectingLinksFromCommentsAndRgGroup);
 }
 
 // Function to copy the contents of the #video_comments element to the clipboard
@@ -508,12 +522,20 @@ async function collectingLinksFromCommentsAndRgGroup(event) {
 function copyContentsToClipboard() {
     const commentsElement = document.querySelector("#video_comments");
     if (commentsElement) {
-        const commentsContent = commentsElement.innerText;
+        const links = commentsElement.querySelectorAll("a");
+
+        // collect href attributes of links in an array
+        const commentsContent = Array.from(links)
+            // allows to disable the collection of links from a hoster by using display: none
+            .filter((link) => !!link.offsetParent)
+            .map((link) => link.href)
+            .join("\n");
+
         GM_setClipboard(commentsContent);
     }
 }
 
-function addImageSearchToCasts() {
+function addCastImageSearchButtons() {
     // styles in addCSS
 
     let castElements = document.querySelectorAll("[id^=cast]");
@@ -546,13 +568,13 @@ function addImageSearchToCasts() {
     });
 }
 
-function addFaceRecognitionSearchToCasts() {
-    let castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
+function addFaceRecognitionSearchButton() {
+    const castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
 
     function addButton(text, link) {
         let button = document.createElement("button");
         button.textContent = text;
-        button.className = "smallbutton open-group";
+        button.className = "smallbutton smallbutton-mod";
         button.style = "width: unset";
         button.onclick = function () {
             window.open(link, "_blank");
@@ -937,13 +959,16 @@ async function main() {
                 })();
             }
 
-            addImageSearchToCasts();
-            addFaceRecognitionSearchToCasts();
+            addCastImageSearchButtons();
+            addFaceRecognitionSearchButton();
+            collectingLinksFromCommentsAndRgGroupButton();
             makeFavoriteCastVisible();
 
-            // window.addEventListener("keydown", executeCollectingComments, { once: true });
-            window.addEventListener("keydown", collectingLinksFromCommentsAndRgGroup);
-
+            window.addEventListener("keydown", function (event) {
+                if (event.key === "<") {
+                    collectingLinksFromCommentsAndRgGroup();
+                }
+            });
             break;
         }
         // Redirect Page
@@ -1192,4 +1217,14 @@ function initializeBeforeRender() {
 }
 
 initializeBeforeRender();
-document.addEventListener("DOMContentLoaded", main, { once: true });
+
+// Sometimes the EventListener is not executed to prevent this:
+// Check if the DOM is already loaded before adding the event listener
+// If it's still loading, add the event listener for "DOMContentLoaded"
+// If it's already loaded, execute the main function immediately
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", main, { once: true });
+} else {
+    document.removeEventListener("DOMContentLoaded", main);
+    main();
+}

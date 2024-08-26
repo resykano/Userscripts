@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240826
+// @version        20240826a
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -539,30 +539,36 @@ function addCastImageSearchButtons() {
     // styles in addCSS
 
     let castElements = document.querySelectorAll("[id^=cast]");
-    castElements.forEach(function (element) {
+    castElements.forEach(function (castElement) {
         function addButton(text, link) {
             let a = document.createElement("a");
             a.target = "_blank";
             a.textContent = text;
             a.className = "customButton";
-            let cast = element.querySelector("span.star > a").textContent;
+            let castName = castElement.querySelector("span.star > a").textContent;
             // Reverse the order of names for better search results
-            if (cast.split(" ").length === 2) {
-                cast = cast.split(" ").reverse().join(" ");
+            if (castName.split(" ").length === 2) {
+                castName = castName.split(" ").reverse().join(" ");
             }
-            if (link && cast) {
-                a.href = link + '"' + cast + '"';
+            if (link && castName) {
+                if (link.includes("duckduckgo") || link.includes("yandex")) {
+                    console.log(link);
+                    a.href = link + '"' + castName + '"';
+                } else {
+                    a.href = link + castName;
+                }
             }
 
             let span = document.createElement("span");
             span.appendChild(a);
 
-            element.appendChild(span);
+            castElement.appendChild(span);
         }
 
         addButton("XsList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
         addButton("Yandex", "https://yandex.com/images/search?text=");
         addButton("V2PH", "https://www.v2ph.com/search/?q=");
+        addButton("AVDBS", "https://www.avdbs.com/menu/search.php?seq=42978591&tab=1&kwd=");
         addButton("JJGirls", "https://jjgirls.com/match.php?model=");
         addButton("KawaiiThong", "https://kawaiithong.com/search_kawaii_pics/");
     });

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240826b
+// @version        20240826c
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -816,27 +816,30 @@ class ExternalSearch {
         console.log("handleRapidgatorPages");
 
         if (this.hostname === "jav.guru") {
-            const sources = document.querySelectorAll("#dl_jav_free");
-            const rapidgatorSources = Array.from(sources).filter((source) => source.innerText.includes("Rapidgator"));
+            // not on redirecting page
+            if (!this.currentURL.includes("/?r==")) {
+                const sources = document.querySelectorAll("#dl_jav_free");
+                const rapidgatorSources = Array.from(sources).filter((source) => source.innerText.includes("Rapidgator"));
 
-            if (rapidgatorSources.length === 0) {
-                window.close();
-                return;
-            }
+                if (rapidgatorSources.length === 0) {
+                    window.close();
+                    return;
+                }
 
-            for (let source of rapidgatorSources) {
-                const link = source.querySelector("a");
-                if (link) {
-                    let onClickContent = link.getAttribute("onclick");
-                    if (onClickContent) {
-                        const match = onClickContent.match(/window\.open\s*\(\s*['"]([^'"]*)['"]/);
-                        if (match) {
-                            const url = match[1];
-                            onClickContent = onClickContent.replace(/window\.open\s*\([^)]*\)/, `window.open('${url}', '_self')`);
-                            link.setAttribute("onclick", onClickContent);
-                            link.click();
-                        } else {
-                            window.open(link.href, "_self");
+                for (let source of rapidgatorSources) {
+                    const link = source.querySelector("a");
+                    if (link) {
+                        let onClickContent = link.getAttribute("onclick");
+                        if (onClickContent) {
+                            const match = onClickContent.match(/window\.open\s*\(\s*['"]([^'"]*)['"]/);
+                            if (match) {
+                                const url = match[1];
+                                onClickContent = onClickContent.replace(/window\.open\s*\([^)]*\)/, `window.open('${url}', '_self')`);
+                                link.setAttribute("onclick", onClickContent);
+                                link.click();
+                            } else {
+                                window.open(link.href, "_self");
+                            }
                         }
                     }
                 }

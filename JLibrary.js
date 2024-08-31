@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240826c
+// @version        20240831
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -34,7 +34,7 @@
 // ---------------------------------------------------------------------------------------
 // Config/Requirements
 // ---------------------------------------------------------------------------------------
-let copied = false;
+let avidCopiedToClipboard = false;
 const url = window.location.href;
 const originalDocumentTitle = document.title;
 let avid = null;
@@ -190,6 +190,7 @@ function addCSS() {
 
                 /* addImageSearchToCasts */
                 .customButton {
+                    font-size: 12px;
                     cursor: default;
                     background-color: buttonface;
                     padding-block: 2px;
@@ -251,29 +252,25 @@ function addTitleCopyPerClick() {
     });
 }
 
-async function initalCopyVideoTitleToClipboard(source) {
-    const authorsMode = await GM_getValue("authorsMode", false);
+function executeInitialLocalSearch(source) {
+    const textElement = getTitleElement();
 
-    if (authorsMode) {
-        const textElement = getTitleElement();
+    if (textElement && !avidCopiedToClipboard && document.hasFocus()) {
+        // only put once to clipboard
+        console.log(`${source}: ${avid}`);
 
-        if (textElement && !copied && document.hasFocus()) {
-            // only put once to clipboard
-            console.log(`${source}: ${avid}`);
-
-            copyTitleToClipboard(avid)
-                .then(() => {
-                    copied = true;
-                    // if tab was opened with link
-                    if (history.length === 1) {
-                        runLocalSearch();
-                    }
-                })
-                .catch(function (err) {
-                    console.error("Failed to copy text: ", err);
-                    copied = false;
-                });
-        }
+        copyTitleToClipboard(avid)
+            .then(() => {
+                avidCopiedToClipboard = true;
+                // if tab was opened with link
+                if (history.length === 1) {
+                    runLocalSearch();
+                }
+            })
+            .catch(function (err) {
+                console.error("Failed to copy text: ", err);
+                avidCopiedToClipboard = false;
+            });
     }
 }
 
@@ -282,7 +279,7 @@ async function initalCopyVideoTitleToClipboard(source) {
  * as information for the execution of another local script
  * Button and auto execute disabled if GM variable privateMode is not set
  */
-async function addLocalSearch() {
+async function addLocalSearchButton() {
     const authorsMode = await GM_getValue("authorsMode", false);
 
     if (authorsMode) {
@@ -313,7 +310,7 @@ function runLocalSearch() {
         document.title = "Browser Local-Search";
         setTimeout(() => {
             document.title = originalDocumentTitle;
-        }, 50);
+        }, 10);
     }
 }
 
@@ -413,7 +410,7 @@ function setSearchLinks() {
         true
     );
 
-    addSearchLinkAndOpenAllButton("Torrent-Search", "https://bt4g.org/search/" + avid + "&orderby=size", "", true);
+    addSearchLinkAndOpenAllButton("Torrent-Search", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "", true);
 }
 
 /**
@@ -476,29 +473,6 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
     existingContainer.insertAdjacentElement("afterend", newElementContainer);
 }
 
-// Execute when button pressed with collecting comments for importing into Jdownloader
-function collectingLinksFromCommentsAndRgGroup() {
-    // press Open Rapidgator Group button
-    document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group > button")?.click();
-
-    // go to comments page, if not already there
-    const allCommentsLink = document.querySelector("#video_comments_all > a");
-    if (allCommentsLink) {
-        // open link
-        GM_setValue("executingCollectingComments", true);
-        setTimeout(() => {
-            window.open(allCommentsLink.href, "_self");
-        }, 200);
-    } else if (document.querySelector("#rightcolumn > div.page_selector > a.page.last")) {
-        // if already on comments page
-        GM_setValue("executingCollectingComments", true);
-        location.reload();
-    } else {
-        copyContentsToClipboard();
-        // alert("No more comments!");
-    }
-}
-
 function collectingLinksFromCommentsAndRgGroupButton() {
     const target = document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group ~ div");
 
@@ -517,9 +491,31 @@ function collectingLinksFromCommentsAndRgGroupButton() {
     addButton("+ Links from Comments", collectingLinksFromCommentsAndRgGroup);
 }
 
+// Execute when button pressed with collecting comments for importing into Jdownloader
+function collectingLinksFromCommentsAndRgGroup() {
+    // press Open Rapidgator Group button
+    document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group > button")?.click();
+
+    // go to comments page, if not already there
+    const allCommentsLink = document.querySelector("#video_comments_all > a");
+    if (allCommentsLink) {
+        // open link
+        GM_setValue("executingCollectingComments", true);
+        setTimeout(() => {
+            window.open(allCommentsLink.href, "_self");
+        }, 200);
+    } else if (document.querySelector("#rightcolumn > div.page_selector > a.page.last")) {
+        // if already on comments page
+        GM_setValue("executingCollectingComments", true);
+        location.reload();
+    } else {
+        copyLinksFromCommentsToClipboard();
+    }
+}
+
 // Function to copy the contents of the #video_comments element to the clipboard
 // for collecting download links in apps like JDownloader
-function copyContentsToClipboard() {
+function copyLinksFromCommentsToClipboard() {
     const commentsElement = document.querySelector("#video_comments");
     if (commentsElement) {
         const links = commentsElement.querySelectorAll("a");
@@ -527,7 +523,10 @@ function copyContentsToClipboard() {
         // collect href attributes of links in an array
         const commentsContent = Array.from(links)
             // allows to disable the collection of links from a hoster by using display: none
+            // The !! converts link.offsetParent to a boolean value
             .filter((link) => !!link.offsetParent)
+            // filter images
+            .filter((link) => !link.href.match(/\.(gif|jpg|jpeg)/i))
             .map((link) => link.href)
             .join("\n");
 
@@ -552,7 +551,6 @@ function addCastImageSearchButtons() {
             }
             if (link && castName) {
                 if (link.includes("duckduckgo") || link.includes("yandex")) {
-                    console.log(link);
                     a.href = link + '"' + castName + '"';
                 } else {
                     a.href = link + castName;
@@ -567,8 +565,8 @@ function addCastImageSearchButtons() {
 
         addButton("XsList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
         addButton("Yandex", "https://yandex.com/images/search?text=");
-        addButton("V2PH", "https://www.v2ph.com/search/?q=");
         addButton("AVDBS", "https://www.avdbs.com/menu/search.php?seq=42978591&tab=1&kwd=");
+        addButton("V2PH", "https://www.v2ph.com/search/?q=");
         addButton("JJGirls", "https://jjgirls.com/match.php?model=");
         addButton("KawaiiThong", "https://kawaiithong.com/search_kawaii_pics/");
     });
@@ -889,9 +887,6 @@ async function main() {
         }
     }
 
-    // do nothing if cloudflare check happens
-    if (document.title.includes("Just a moment...")) return;
-
     getAvid();
 
     switch (true) {
@@ -912,7 +907,7 @@ async function main() {
             addTitleCopyPerClick();
 
             // adds posibility for local search but disabled by default as needs addinal scripts
-            addLocalSearch();
+            addLocalSearchButton();
 
             // add search links
             setSearchLinks();
@@ -940,13 +935,13 @@ async function main() {
                 removeRedirects();
             }, 500);
 
-            // copy title to clipboard
+            // autorun local search
             const authorsMode = await GM_getValue("authorsMode", false);
             if (authorsMode) {
                 (function () {
                     // Handle the case when the window is opened in the background
                     window.addEventListener("focus", function () {
-                        initalCopyVideoTitleToClipboard("EventListener");
+                        executeInitialLocalSearch("EventListener");
                     });
                     // Handle the case when the window is opened in the foreground
                     // IntersectionObserver is used for better performance and reliability
@@ -954,7 +949,7 @@ async function main() {
                     const observer = new IntersectionObserver((entries) => {
                         entries.forEach((entry) => {
                             if (entry.isIntersecting) {
-                                initalCopyVideoTitleToClipboard("IntersectionObserver");
+                                executeInitialLocalSearch("IntersectionObserver");
                             }
                         });
                     });
@@ -1036,7 +1031,7 @@ async function main() {
             console.log("Comments Page");
 
             async function loadNextPage() {
-                copyContentsToClipboard(); // Copy the comments content before loading the next page
+                copyLinksFromCommentsToClipboard(); // Copy the comments content before loading the next page
 
                 let currentPage = new URL(window.location.href).searchParams.get("page");
                 let lastPageUrl = document.querySelector("#rightcolumn > div.page_selector > a.page.last")?.href;
@@ -1078,7 +1073,7 @@ async function main() {
             (async function () {
                 let executingCollectingComments = await GM_getValue("executingCollectingComments", false);
                 if (executingCollectingComments) {
-                    // await sleep(1000);
+                    // await new Promise((resolve) => setTimeout(resolve, 1000));
                     loadNextPage();
                 } else {
                     window.addEventListener("keydown", function (event) {
@@ -1216,8 +1211,6 @@ async function main() {
 }
 
 function initializeBeforeRender() {
-    // GM_setValue("authorsMode", true);
-
     addCSS();
 
     switch (true) {
@@ -1229,15 +1222,20 @@ function initializeBeforeRender() {
     }
 }
 
-initializeBeforeRender();
+// do nothing if cloudflare check happens
+if (!document.title.includes("Just a moment...")) {
+    initializeBeforeRender();
 
-// Sometimes the EventListener is not executed to prevent this:
-// Check if the DOM is already loaded before adding the event listener
-// If it's still loading, add the event listener for "DOMContentLoaded"
-// If it's already loaded, execute the main function immediately
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", main, { once: true });
-} else {
-    document.removeEventListener("DOMContentLoaded", main);
-    main();
+    // Sometimes the EventListener is not executed to prevent this:
+    // Check if the DOM is already loaded before adding the event listener
+    // If it's still loading, add the event listener for "DOMContentLoaded"
+    // If it's already loaded, execute the main function immediately
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", main, { once: true });
+    } else {
+        document.removeEventListener("DOMContentLoaded", main);
+        main();
+    }
 }
+
+// GM_setValue("authorsMode", true);

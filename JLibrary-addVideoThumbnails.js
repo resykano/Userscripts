@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Video Thumbnails
 // @description    Inserts a video preview in form of thumbnails
-// @version        20240812
+// @version        20240831
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*/?v=*
@@ -339,6 +339,15 @@ function findLinkInDocument(responseText, avid, selector) {
 // do nothing if cloudflare check happens
 if (!document.title.includes("Just a moment...")) {
     addCSS();
-}
 
-document.addEventListener("DOMContentLoaded", getVideoThumbnailUrl);
+    // Sometimes the EventListener is not executed to prevent this:
+    // Check if the DOM is already loaded before adding the event listener
+    // If it's still loading, add the event listener for "DOMContentLoaded"
+    // If it's already loaded, execute the getVideoThumbnailUrl function immediately
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", getVideoThumbnailUrl, { once: true });
+    } else {
+        document.removeEventListener("DOMContentLoaded", getVideoThumbnailUrl);
+        main();
+    }
+}

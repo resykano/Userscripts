@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Video Thumbnails
 // @description    Inserts a video preview in form of thumbnails
-// @version        20240831
+// @version        20240901
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*/?v=*
@@ -347,7 +347,6 @@ if (!document.title.includes("Just a moment...")) {
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", getVideoThumbnailUrl, { once: true });
     } else {
-        document.removeEventListener("DOMContentLoaded", getVideoThumbnailUrl);
-        main();
+        getVideoThumbnailUrl();
     }
 }

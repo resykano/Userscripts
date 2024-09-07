@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240901
+// @version        20240907
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -98,7 +98,13 @@ function addCSS() {
     GM_addStyle(`
         /* Saving space on top and left */
         #toplogo {
-            height: 26px;
+            position: absolute;
+            height: 28px;
+            top: 37px;
+            left: unset;
+            right: 16px;
+            background: unset;
+            z-index: 999;
         }
         #toplogo .sitelogo {
             display: none;
@@ -310,7 +316,7 @@ function runLocalSearch() {
         document.title = "Browser Local-Search";
         setTimeout(() => {
             document.title = originalDocumentTitle;
-        }, 10);
+        }, 50);
     }
 }
 
@@ -479,7 +485,8 @@ function collectingLinksFromCommentsAndRgGroupButton() {
     function addButton(text, action) {
         let button = document.createElement("button");
         button.textContent = text;
-        button.className = "smallbutton smallbutton-mod";
+        button.title = "Hotkey <";
+        button.className = "smallbutton smallbutton-mod";        
         button.style = "position: relative; top: 7px;";
         button.onclick = function () {
             action();
@@ -525,8 +532,8 @@ function copyLinksFromCommentsToClipboard() {
             // allows to disable the collection of links from a hoster by using display: none
             // The !! converts link.offsetParent to a boolean value
             .filter((link) => !!link.offsetParent)
-            // filter images
-            .filter((link) => !link.href.match(/\.(gif|jpg|jpeg)/i))
+            // filter not usable
+            .filter((link) => !link.href.match(/(\.gif|\.jpg|\.jpeg|user\.php|userposts\.php|ouo\.io)/i))
             .map((link) => link.href)
             .join("\n");
 
@@ -702,6 +709,7 @@ function setAdvertisingPhotosToFullSize() {
             img.src = anchor.href;
             img.removeAttribute("width");
             img.removeAttribute("height");
+            anchor.href
         }
     });
 }

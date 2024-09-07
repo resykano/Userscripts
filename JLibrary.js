@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240907
+// @version        20240907a
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -99,13 +99,18 @@ function addCSS() {
         /* Saving space on top and left */
         #toplogo {
             position: absolute;
+            top: 0;
             height: 28px;
-            top: 37px;
             left: unset;
-            right: 16px;
             background: unset;
-            z-index: 999;
+            overflow: unset;
         }
+        #toplogo .languagemenu {
+            padding-right: 16px;
+            top: 34px;
+            z-index: 1;
+        }
+        #toplogo .topbanner1,
         #toplogo .sitelogo {
             display: none;
         }
@@ -116,7 +121,7 @@ function addCSS() {
             padding-top: 0;
         }
         div.boxtitle {
-            top: 0em;
+            top: 0;
             padding: unset;
         }
 
@@ -135,6 +140,14 @@ function addCSS() {
         // JAV Details
         case /[a-z]{2}\/\?v=jav.*/.test(url): {
             GM_addStyle(`
+                #toplogo .languagemenu {
+                    top: 45px;
+                }
+                #video_title h3.post-title {
+                    padding-right: 64px;
+                    top: 30px;
+                }
+                
                 #video_info {
                     min-width: 430px;
                 }
@@ -486,7 +499,7 @@ function collectingLinksFromCommentsAndRgGroupButton() {
         let button = document.createElement("button");
         button.textContent = text;
         button.title = "Hotkey <";
-        button.className = "smallbutton smallbutton-mod";        
+        button.className = "smallbutton smallbutton-mod";
         button.style = "position: relative; top: 7px;";
         button.onclick = function () {
             action();
@@ -709,7 +722,7 @@ function setAdvertisingPhotosToFullSize() {
             img.src = anchor.href;
             img.removeAttribute("width");
             img.removeAttribute("height");
-            anchor.href
+            anchor.href;
         }
     });
 }

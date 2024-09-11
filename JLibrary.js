@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240909
+// @version        20240911
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -22,6 +22,7 @@
 // @grant          GM_getValue
 // @grant          GM_setValue
 // @grant          GM_addStyle
+// @grant          GM_openInTab
 // @grant          window.close
 // @run-at         document-start
 // @compatible     chrome
@@ -484,9 +485,15 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
                 console.log("externalSearchMode off");
             }, 7000);
 
-            reversedLinks.forEach(function (link) {
-                window.open(link.href);
-            });
+            if (className === "Rapidgator-Group") {
+                reversedLinks.forEach(function (link) {
+                    GM_openInTab(link.href);
+                });
+            } else {
+                reversedLinks.forEach(function (link) {
+                    window.open(link.href);
+                });
+            }
         });
 
         newElementContainer.appendChild(openAllButton);
@@ -919,6 +926,7 @@ async function main() {
             console.log("JAV Details");
 
             // TODO: needs a more solid solution than just a blind timeout
+            // maybe possible with GM_openInTab
             let externalSearchMode = await GM_getValue("externalSearchMode", false);
             if (externalSearchMode) {
                 setTimeout(async () => {

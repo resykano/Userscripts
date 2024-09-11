@@ -485,6 +485,7 @@ function addSearchLinkAndOpenAllButton(name, href, className, separator = false)
                 console.log("externalSearchMode off");
             }, 7000);
 
+            // open in background tabs
             if (className === "Rapidgator-Group") {
                 reversedLinks.forEach(function (link) {
                     GM_openInTab(link.href);

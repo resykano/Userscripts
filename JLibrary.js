@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240913
+// @version        20240921
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -148,7 +148,7 @@ function addCSS() {
                     top: 45px;
                 }
                 #video_title h3.post-title {
-                    padding-right: 64px;
+                    padding-right: 78px;
                     top: 30px;
                 }
                 
@@ -847,7 +847,7 @@ class ExternalSearch {
 
         if (this.hostname === "jav.guru") {
             // not on redirecting page
-            if (!this.currentURL.includes("/?r==")) {
+            if (!this.currentURL.includes("/?r=")) {
                 const sources = document.querySelectorAll("#dl_jav_free");
                 const rapidgatorSources = Array.from(sources).filter((source) => source.innerText.includes("Rapidgator"));
 

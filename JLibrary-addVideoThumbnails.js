@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Video Thumbnails
 // @description    Inserts a video preview in form of thumbnails
-// @version        20240901
+// @version        20240928
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*/?v=*
@@ -25,7 +25,7 @@ function getAvid() {
 function addCSS() {
     GM_addStyle(`
         /* improve space on smaller viewports */
-        @media screen and (max-width: 1300px) {
+        @media screen and (max-width: 1200px) {
             #leftmenu {
                 display: none;
             }
@@ -39,15 +39,15 @@ function addCSS() {
             min-width: 370px;
         }
 
-        #videoThumbnail {
+        #videoThumbnails {
             width: 100%;
             margin-top: 5px;
         }
-        #videoThumbnail > img {
+        #videoThumbnails > img {
             width: 100%;
         }
         /* no preview info */
-        #videoThumbnail > p {
+        #videoThumbnails > p {
             border-radius: 5px;
             border: 2px solid coral;
             padding: 10px;
@@ -91,6 +91,8 @@ function getVideoThumbnailUrl() {
     }
 
     function addVideoThumbnails(targetImageUrl) {
+        if (document.querySelector("#videoThumbnails")) return;
+
         console.log("Image URL being displayed: " + targetImageUrl);
         const targetElement = document.querySelector("#video_jacket");
 
@@ -106,7 +108,7 @@ function getVideoThumbnailUrl() {
             }
 
             let container = document.createElement("div");
-            container.id = "videoThumbnail";
+            container.id = "videoThumbnails";
 
             container.append(contentElement);
             targetElement.insertAdjacentElement("afterend", container);

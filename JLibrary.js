@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
-// @description    Many improvements mainly in details view of a video for recherche: easier collect of Google Drive and Rapidgator links for JDownloader (press <), save/show favorite actresses, recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size
-// @version        20240921
+// @description    Many improvements mainly in details view of a video for recherche: video thumbnails below cover, easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
+// @version        20241001
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
 // @match          *://*.javlibrary.com/*
@@ -16,6 +16,7 @@
 // @match          *://missav.com/*
 // @match          *://video-jav.net/*
 // @match          *://www.akiba-online.com/search/*
+// @grant          GM_registerMenuCommand
 // @grant          GM_xmlHttpRequest
 // @grant          GM_download
 // @grant          GM_setClipboard
@@ -32,13 +33,19 @@
 
 "use strict";
 
-// ---------------------------------------------------------------------------------------
+// =======================================================================================
 // Config/Requirements
-// ---------------------------------------------------------------------------------------
+// =======================================================================================
+
 let avidCopiedToClipboard = false;
 const url = window.location.href;
 const originalDocumentTitle = document.title;
 let avid = null;
+// allowed execution time of Collect Rapidgator Link & Thumbnails Search
+const externalSearchModeTimeout = 8000;
+// fetching of data from other websites
+const externalSearchTimeout = 10000;
+const configurationOptions = ["Improvements", "Video-Thumbnails"];
 
 function getTitleElement() {
     return document.querySelector("#video_id > table > tbody > tr > td.text");
@@ -91,11 +98,13 @@ function waitForElement(selector, index = 0) {
     });
 }
 
-// ---------------------------------------------------------------------------------------
-// Functions
-// ---------------------------------------------------------------------------------------
+GM_registerMenuCommand("Configuration", configurationMenu, "c");
 
-function addCSS() {
+// =======================================================================================
+// Layout Improvements
+// =======================================================================================
+
+function addImprovementsCss() {
     GM_addStyle(`
         /* Saving space on top and left */
         #topmenu {
@@ -154,11 +163,29 @@ function addCSS() {
                 
                 #video_info {
                     min-width: 430px;
+                    padding-right: 0 !important;
+                }
+
+                /* reduce height between sections */
+                #video_info table {
+                    margin-top: 6px !important;
+                }
+                
+                /* disable strange hover */
+                #video_info table,
+                #video_info table:hover {
+                    border-bottom: unset !important;
+                }
+
+                /* cast layout */
+                /* remove unsed space */
+                #video_info table > tbody > tr > td.icon {
+                    display: none;
                 }
 
                 .added-links {
-                    margin-left: 107px;
-                    max-width: 370px;
+                    margin-left: 112px;
+                    width: 370px;
                     height: 17px;
                     display: flex;
                     align-items: flex-end;
@@ -170,11 +197,11 @@ function addCSS() {
 
                 /* addSearchLinkAndOpenAllButton & addFaceRecognitionSearchToCasts */
                 button.smallbutton-mod {
-                    margin-left: 8px;
+                    margin-left: 2px;
                     margin-top: 0;
                     margin-bottom: 0;
                     padding: 3px;
-                    width: 150px;
+                    width: 160px;
                     height: 22px;
                     user-select = none;
                 }
@@ -185,12 +212,16 @@ function addCSS() {
                     text-align: center;
                 }
 
+                #video_jacket {
+                    text-align: left !important;
+                }
                 /* prevent video metadata from becoming too narrow */
                 #video_jacket_info > tbody > tr > td:nth-child(2) {
                     min-width: 370px;
+                    min-width: 550px;
                 }
 
-                @media screen and (min-width: 1301px) {
+                @media screen and (min-width: 1571px) {
                     /* reduce FOUC for cover image */
                     img#video_jacket_img {
                         width: 800px;
@@ -200,7 +231,7 @@ function addCSS() {
                     }
                 }
 
-                @media screen and (max-width: 1300px) {
+                @media screen and (max-width: 1570px) {
                     /* same size for cover and metadata area */
                     #video_jacket_info > tbody > tr > td {
                         width: 50%;
@@ -212,15 +243,34 @@ function addCSS() {
                 }
 
                 /* addImageSearchToCasts */
+                .cast-container {
+                    display: block;
+                    margin: 0px 2px 2px;
+                    border-radius: 5px;
+                    /* 
+                    background: rgb(243, 243, 243);
+                    padding: 2px 3px;
+                    */
+                }
+                span.cast {
+                    margin-bottom: 0;
+                    /* padding: 0; */
+                }
+                .image-search {
+                    display: flex;
+                    flex-wrap: wrap;
+                    padding: 0 3px;
+                }
                 .customButton {
                     font-size: 12px;
                     cursor: default;
-                    background-color: buttonface;
+                    background-color: #f9f9f9;
                     padding-block: 2px;
                     padding-inline: 6px;
+                    margin: 1px 1px 4px 0;
                     border-width: 1px;
                     border-style: solid;
-                    border-color: #767676;
+                    border-color: #c9c9c9;
                     border-radius: 2px;
                     color: black;
                     transition: background-color 0.3s ease;
@@ -257,451 +307,6 @@ function addCSS() {
     }
 }
 
-function removeRedirects() {
-    let externalLinks = document.querySelectorAll("table[id^=comment] > tbody > tr:nth-child(1) > td.t > div a[href^='redirect.php']");
-    for (let externalLink of externalLinks) {
-        externalLink.href = decodeURIComponent(
-            externalLink.href?.replace(/https:\/\/www\.javlibrary\.com\/.*\/redirect\.php\?url=/, "").replace(/\&ver=.*/, "")
-        );
-    }
-}
-
-function addTitleCopyPerClick() {
-    let titleElement = getTitleElement();
-
-    titleElement.style.cursor = "pointer";
-    titleElement.addEventListener("click", function () {
-        copyTitleToClipboard();
-    });
-}
-
-function executeInitialLocalSearch(source) {
-    const textElement = getTitleElement();
-
-    if (textElement && !avidCopiedToClipboard && document.hasFocus()) {
-        // only put once to clipboard
-        console.log(`${source}: ${avid}`);
-
-        copyTitleToClipboard(avid)
-            .then(() => {
-                avidCopiedToClipboard = true;
-                // if tab was opened with link
-                if (history.length === 1) {
-                    runLocalSearch();
-                }
-            })
-            .catch(function (err) {
-                console.error("Failed to copy text: ", err);
-                avidCopiedToClipboard = false;
-            });
-    }
-}
-
-/**
- * requires a local script such as AHK, which recognizes the window title
- * as information for the execution of another local script
- * Button and auto execute disabled if GM variable privateMode is not set
- */
-async function addLocalSearchButton() {
-    const authorsMode = await GM_getValue("authorsMode", false);
-
-    if (authorsMode) {
-        let targetElement = getTitleElement();
-
-        let newButton = document.createElement("button");
-        newButton.textContent = "Local-Search";
-        newButton.className = "smallbutton localsearch";
-        newButton.style = "position:relative;top:-3px;margin-left:10px";
-
-        targetElement.insertAdjacentElement("afterend", newButton);
-
-        newButton.addEventListener(
-            "click",
-            function () {
-                copyTitleToClipboard().then(() => {
-                    runLocalSearch();
-                });
-            },
-            false
-        );
-    }
-}
-
-function runLocalSearch() {
-    // not on image videos
-    if (!document.querySelector("#genre199")) {
-        document.title = "Browser Local-Search";
-        setTimeout(() => {
-            document.title = originalDocumentTitle;
-        }, 50);
-    }
-}
-
-function copyTitleToClipboard() {
-    return navigator.clipboard.writeText(avid);
-}
-
-function coverImageDownload() {
-    // big preview screen shots
-    const screenShots = document.querySelectorAll("#rightcolumn > div.previewthumbs > img");
-    for (let img of screenShots) {
-        srcBigPictures = img.src.replace(/(.*)(-[0-9].*)$/i, "$1jp$2");
-        img.src = srcBigPictures;
-    }
-
-    // rename cover image
-    let casts = document.querySelectorAll("[id^=cast] > span.star > a");
-    let newFilename = avid + " - ";
-    let iteration = casts.length;
-    for (let cast of casts) {
-        // also replace non-ASCII characters
-        newFilename += cast.textContent.replace(/[^\x00-\x7F]/g, "");
-
-        // do as long not last iteration
-        if (--iteration) newFilename += ", ";
-    }
-
-    const coverPicture = document.querySelector("#video_jacket_img");
-    const coverPictureUrl = coverPicture?.src;
-
-    coverPicture?.addEventListener(
-        "click",
-        function () {
-            GM_download({
-                url: coverPictureUrl,
-                headers: { referer: coverPictureUrl, origin: coverPictureUrl },
-                name: newFilename,
-                onload: function (download) {
-                    // Create an invisible <a> element
-                    const downloadLink = document.createElement("a");
-
-                    // Set the Blob URL as the HREF value and the filename for download
-                    downloadLink.setAttribute("download", newFilename);
-
-                    // Trigger the click event on the invisible <a> element
-                    downloadLink.click();
-                },
-                onerror: function (error) {
-                    console.error("Download failed:", error);
-                },
-            });
-        },
-        {
-            once: true,
-        }
-    );
-}
-
-function setSearchLinks() {
-    // add search links and buttons
-    addSearchLinkAndOpenAllButton(
-        "DuckDuckGo Screens",
-        "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
-        ""
-    );
-    addSearchLinkAndOpenAllButton("DuckDuckGo", "https://duckduckgo.com/?kp=-2&q=" + '"' + avid + '"' + " JAV", "", true);
-
-    addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/?q=" + avid, "");
-    addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
-
-    addSearchLinkAndOpenAllButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + avid, "Stream-Group");
-    addSearchLinkAndOpenAllButton("JAVHDMost | Stream", "https://javhdmost.com/?s=" + avid, "Stream-Group");
-    addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Stream-Group");
-    addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Stream-Group");
-    addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Stream-Group", true);
-
-    addSearchLinkAndOpenAllButton("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + avid, "GDrive-Group");
-    addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "GDrive-Group");
-    addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "GDrive-Group", true);
-
-    addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
-    addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
-
-    addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.com/en/search/" + avid, "Rapidgator-Group");
-    addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Rapidgator-Group");
-    addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "Rapidgator-Group", true);
-
-    addSearchLinkAndOpenAllButton("3xPlanet | Preview", "https://3xplanet.com/?s=" + avid, "Preview-Group-2");
-    addSearchLinkAndOpenAllButton("JAVAkiba | Preview", "https://javakiba.org/?s=" + avid, "Preview-Group-2");
-    addSearchLinkAndOpenAllButton("Video-JAV | Preview", "http://video-jav.net/?s=" + avid, "Preview-Group-2", true);
-
-    addSearchLinkAndOpenAllButton("JAV Max Quality | Preview", "https://maxjav.com/?s=" + avid, "Preview-Group-1");
-    addSearchLinkAndOpenAllButton(
-        "Akiba-Online | Preview",
-        "https://www.akiba-online.com/search/?q=" + avid + "&c%5Btitle_only%5D=1&o=date&search=" + avid,
-        "Preview-Group-1",
-        true
-    );
-
-    addSearchLinkAndOpenAllButton("Torrent-Search", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "", true);
-}
-
-/**
- * Adds a search links and open all links buttons
- *
- * @param {*} name Name
- * @param {*} href URL
- * @param {*} separator Adds a space on top
- * @param {*} className Adds a class
- */
-function addSearchLinkAndOpenAllButton(name, href, className, separator = false) {
-    // styles in addCSS
-
-    if (separator) {
-        separator = "added-links-separator";
-    }
-    if (className === "") className = undefined;
-
-    // after the casting container or "search tips" if the search does not return any results
-    let existingContainer = castContainer() || document.querySelector("#rightcolumn > div.titlebox");
-    let newElementContainer = document.createElement("div");
-    newElementContainer.classList.add("added-links");
-    newElementContainer.classList.add(separator);
-    newElementContainer.classList.add(className);
-
-    let newElement = document.createElement("a");
-    newElement.href = href;
-    newElement.textContent = name;
-    newElementContainer.appendChild(newElement);
-
-    // add open all links buttons
-    if (separator && className) {
-        const openAllButton = document.createElement("button");
-        const buttonTitle = className.replace(/-/g, " ");
-
-        openAllButton.textContent = "Open " + buttonTitle;
-        openAllButton.className = "smallbutton smallbutton-mod";
-
-        openAllButton.addEventListener("click", function () {
-            let linksToOpen = document.querySelectorAll(`.${className}.added-links a`);
-            let reversedLinks = Array.from(linksToOpen).reverse();
-
-            // allow batch search on external sites
-            GM_setValue("externalSearchMode", true);
-
-            // TODO: needs a more solid solution without brute force
-            setTimeout(async () => {
-                GM_setValue("externalSearchMode", false);
-                console.log("externalSearchMode off");
-            }, 7000);
-
-            // open in background tabs
-            if (className === "Rapidgator-Group") {
-                reversedLinks.forEach(function (link) {
-                    GM_openInTab(link.href);
-                });
-            } else {
-                reversedLinks.forEach(function (link) {
-                    window.open(link.href);
-                });
-            }
-        });
-
-        newElementContainer.appendChild(openAllButton);
-    }
-
-    existingContainer.insertAdjacentElement("afterend", newElementContainer);
-}
-
-function collectingLinksFromCommentsAndRgGroupButton() {
-    const target = document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group ~ div");
-
-    function addButton(text, action) {
-        let button = document.createElement("button");
-        button.textContent = text;
-        button.title = "Hotkey <";
-        button.className = "smallbutton smallbutton-mod";
-        button.style = "position: relative; top: 7px;";
-        button.onclick = function () {
-            action();
-        };
-
-        target.appendChild(button);
-    }
-
-    addButton("+ Links from Comments", collectingLinksFromCommentsAndRgGroup);
-}
-
-// Execute when button pressed with collecting comments for importing into Jdownloader
-function collectingLinksFromCommentsAndRgGroup() {
-    // press Open Rapidgator Group button
-    document.querySelector("#video_info > div.added-links.added-links-separator.Rapidgator-Group > button")?.click();
-
-    // go to comments page, if not already there
-    const allCommentsLink = document.querySelector("#video_comments_all > a");
-    if (allCommentsLink) {
-        // open link
-        GM_setValue("executingCollectingComments", true);
-        setTimeout(() => {
-            window.open(allCommentsLink.href, "_self");
-        }, 200);
-    } else if (document.querySelector("#rightcolumn > div.page_selector > a.page.last")) {
-        // if already on comments page
-        GM_setValue("executingCollectingComments", true);
-        location.reload();
-    } else {
-        copyLinksFromCommentsToClipboard();
-    }
-}
-
-// Function to copy the contents of the #video_comments element to the clipboard
-// for collecting download links in apps like JDownloader
-function copyLinksFromCommentsToClipboard() {
-    const commentsElement = document.querySelector("#video_comments");
-    if (commentsElement) {
-        const links = commentsElement.querySelectorAll("a");
-
-        // collect href attributes of links in an array
-        const commentsContent = Array.from(links)
-            // allows to disable the collection of links from a hoster by using display: none
-            // The !! converts link.offsetParent to a boolean value
-            .filter((link) => !!link.offsetParent)
-            // filter not usable
-            .filter((link) => !link.href.match(/(\.gif|\.jpg|\.jpeg|user\.php|userposts\.php|ouo\.io)/i))
-            .map((link) => link.href)
-            .join("\n");
-
-        GM_setClipboard(commentsContent);
-    }
-}
-
-function addCastImageSearchButtons() {
-    // styles in addCSS
-
-    let castElements = document.querySelectorAll("[id^=cast]");
-    castElements.forEach(function (castElement) {
-        function addButton(text, link) {
-            let a = document.createElement("a");
-            a.target = "_blank";
-            a.textContent = text;
-            a.className = "customButton";
-            let castName = castElement.querySelector("span.star > a").textContent;
-            // Reverse the order of names for better search results
-            if (castName.split(" ").length === 2) {
-                castName = castName.split(" ").reverse().join(" ");
-            }
-            if (link && castName) {
-                if (link.includes("duckduckgo") || link.includes("yandex")) {
-                    a.href = link + '"' + castName + '"';
-                } else {
-                    a.href = link + castName;
-                }
-            }
-
-            let span = document.createElement("span");
-            span.appendChild(a);
-
-            castElement.appendChild(span);
-        }
-
-        addButton("XsList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
-        addButton("Yandex", "https://yandex.com/images/search?text=");
-        addButton("AVDBS", "https://www.avdbs.com/menu/search.php?seq=42978591&tab=1&kwd=");
-        addButton("V2PH", "https://www.v2ph.com/search/?q=");
-        addButton("JJGirls", "https://jjgirls.com/match.php?model=");
-        addButton("KawaiiThong", "https://kawaiithong.com/search_kawaii_pics/");
-    });
-}
-
-function addFaceRecognitionSearchButton() {
-    const castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
-
-    function addButton(text, link) {
-        let button = document.createElement("button");
-        button.textContent = text;
-        button.className = "smallbutton smallbutton-mod";
-        button.style = "width: unset";
-        button.onclick = function () {
-            window.open(link, "_blank");
-        };
-
-        let span = document.createElement("span");
-        span.style = "display: block; margin-top: 5px";
-        span.appendChild(button);
-
-        castContainer.appendChild(span);
-    }
-
-    addButton("Find cast with facial recognition", "https://xslist.org/en/searchByImage");
-}
-
-async function makeFavoriteCastVisible() {
-    const favoriteClass = "favorite-star";
-
-    function addCss() {
-        GM_addStyle(`
-            span[class^="icn_fav"].favorite-star {
-                background-image: url(${favoriteImage});
-            }
-            span[class^="icn_fav"] {
-                background-image: url(${nonFavoriteImage});
-                background-size: contain;
-                background-position: unset;
-                background-color: #252525;
-                border-radius: 4px;
-            }
-        `);
-    }
-
-    function toggleFavoriteCast(event) {
-        const element = event.target;
-        const elementId = element.id;
-        const isFavorite = element.classList.toggle(favoriteClass);
-
-        // hide and auto close modal asking if cast should be added to favorites
-        waitForElement("div.noty_bar.center.alert.default").then(() => {
-            function addTemporaryCssRule() {
-                var styleElement = GM_addStyle(`
-                    div.noty_bar.center.alert.default,
-                    div.noty_modal
-                    {
-                        display: none !important;
-                    }
-                `);
-
-                // Remove the CSS after the specified duration
-                setTimeout(function () {
-                    styleElement.parentNode.removeChild(styleElement);
-                }, 2000);
-            }
-
-            // Hide modal until we have clicked it away
-            addTemporaryCssRule();
-
-            // The "ok" and "close" buttons are always created immediately in the DOM and then adjusted afterwards.
-            // This means that the decision as to what must be clicked does not work with the if clause.
-            // close with ok
-            let okButton = document.querySelector(
-                "div.noty_bar.center.alert.default > div.noty_message > div.noty_text > div.noty_buttons > button.button.green"
-            );
-            okButton?.click();
-            // if not closed with ok, then with close button which can only be clicked after a delay
-            setTimeout(() => {
-                let closeButton = document.querySelector("div.noty_bar.center.alert.default > div.noty_message > div.noty_close");
-                closeButton?.click();
-            }, 1000);
-        });
-
-        if (isFavorite) {
-            GM_setValue(elementId, true);
-        } else {
-            GM_deleteValue(elementId);
-        }
-    }
-
-    addCss();
-
-    const starElements = document.querySelectorAll("[id^=star]");
-    for (const element of starElements) {
-        const elementId = element.id;
-        const isFavoriteStar = await GM_getValue(elementId, false);
-        if (isFavoriteStar) {
-            element.classList.add(favoriteClass);
-        }
-        element.addEventListener("click", toggleFavoriteCast);
-    }
-}
-
 async function removeResizingOfCoverImage() {
     const coverImage = await waitForElement("#video_jacket_img");
 
@@ -724,35 +329,15 @@ async function removeResizingOfCoverImage() {
     observer.observe(coverImage, { attributes: true });
 }
 
-function setAdvertisingPhotosToFullSize() {
-    const advertisingPreviewImageLinks = document.querySelectorAll("#rightcolumn > div.previewthumbs > a:not(.btn_videoplayer)");
+// =======================================================================================
+// External Search
+// =======================================================================================
 
-    advertisingPreviewImageLinks.forEach((anchor) => {
-        const img = anchor.querySelector("img");
-        if (img) {
-            img.src = anchor.href;
-            img.removeAttribute("width");
-            img.removeAttribute("height");
-            anchor.href;
-        }
-    });
-}
+function externalSearch() {
+    const currentURL = window.location.href;
+    const hostname = window.location.hostname;
 
-// ---------------------------------------------------------------------------------------
-// external search
-// ---------------------------------------------------------------------------------------
-
-class ExternalSearch {
-    constructor() {
-        this.currentURL = window.location.href;
-        this.hostname = window.location.hostname;
-    }
-
-    openLink(url, target = "_self") {
-        return window.open(url, target);
-    }
-
-    handleSearchResults() {
+    function handleSearchResults() {
         const selectors = [
             //default
             "[id^=post]",
@@ -807,14 +392,14 @@ class ExternalSearch {
             });
 
             if (openWindowCheck !== null) {
-                setTimeout(() => window.close(), 2000);
+                setTimeout(() => window.close(), 1000);
             } else {
                 console.log("window.open blocked");
             }
         }
     }
 
-    handleGoogleDrivePages() {
+    function handleGoogleDrivePages() {
         const links = document.querySelectorAll("[id^=post] a");
         let isFirstIteration = true;
 
@@ -832,7 +417,7 @@ class ExternalSearch {
             }
         });
 
-        if (this.hostname === "javgg.me") {
+        if (hostname === "javgg.me") {
             const postContentElement = document.querySelector("article.status-publish.hentry > div > p");
             if (postContentElement && postContentElement.textContent.includes("drive.google.com/file/")) {
                 GM_setClipboard(postContentElement.textContent)
@@ -842,12 +427,12 @@ class ExternalSearch {
         }
     }
 
-    async handleRapidgatorPages() {
+    async function handleRapidgatorPages() {
         console.log("handleRapidgatorPages");
 
-        if (this.hostname === "jav.guru") {
+        if (hostname === "jav.guru") {
             // not on redirecting page
-            if (!this.currentURL.includes("/?r=")) {
+            if (!currentURL.includes("/?r=")) {
                 const sources = document.querySelectorAll("#dl_jav_free");
                 const rapidgatorSources = Array.from(sources).filter((source) => source.innerText.includes("Rapidgator"));
 
@@ -890,361 +475,1366 @@ class ExternalSearch {
         }
     }
 
-    main() {
+    function runSearch() {
         switch (true) {
-            case this.currentURL.includes("/?s=") || this.currentURL.includes("/search"):
-                this.handleSearchResults();
+            case currentURL.includes("/?s=") || currentURL.includes("/search"):
+                handleSearchResults();
                 break;
-            case ["arcjav.com", "javgg.me", "javx357.com"].includes(this.hostname):
-                this.handleGoogleDrivePages();
+            case ["arcjav.com", "javgg.me", "javx357.com"].includes(hostname):
+                handleGoogleDrivePages();
                 break;
-            case ["jav.guru", "supjav.com", "missav.com"].includes(this.hostname):
-                this.handleRapidgatorPages();
+            case ["jav.guru", "supjav.com", "missav.com"].includes(hostname):
+                handleRapidgatorPages();
                 break;
         }
     }
+
+    runSearch();
 }
 
-// ---------------------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------------------
+// =======================================================================================
+// General Improvements
+// =======================================================================================
 
-async function main() {
-    // Cloudflare restricted access
-    if (/.*/.test(url)) {
-        if (document.title.includes("Access denied")) {
-            setTimeout(() => {
-                location.reload();
-            }, 10000);
+async function addImprovements() {
+    (async function () {
+        const configured = await GM_getValue("Improvements", true);
+        if (!configured) return;
+
+        getAvid();
+
+        switch (true) {
+            // JAV Details
+            case /[a-z]{2}\/\?v=jav.*/.test(url): {
+                console.log("JAV Details");
+
+                if (!avid) {
+                    console.log("addImprovements details: no AVID");
+                    return;
+                }
+
+                // add title textbox
+                addTitleCopyPerClick();
+
+                // adds posibility for local search but disabled by default as needs addinal scripts
+                addLocalSearchButton();
+
+                // add search links
+                setSearchLinks();
+
+                // increase advertising previews
+                setAdvertisingPhotosToFullSize();
+
+                // add Cover Image Download button
+                coverImageDownload();
+
+                // remove link by converting <a> to <span> element
+                removeLinkInTitle();
+
+                // adds buttons to search for more informations about a cast
+                addCastImagesSearchButtons();
+
+                // button for facial recognition
+                addFaceRecognitionSearchButton();
+
+                // executes collecting all links from comments and opens rapidgator group
+                collectingLinksFromCommentsAndRgGroupButton();
+
+                // adds own svg to make favorite cast visible
+                makeFavoriteCastVisible();
+
+                // remove redirects for external links
+                setTimeout(() => {
+                    removeRedirects();
+                }, 500);
+
+                // TODO: needs a more solid solution than just a blind timeout
+                // maybe possible with GM_openInTab
+                let externalSearchMode = await GM_getValue("externalSearchMode", false);
+                if (externalSearchMode) {
+                    setTimeout(async () => {
+                        GM_setValue("externalSearchMode", false);
+                        console.log("externalSearchMode off");
+                    }, externalSearchModeTimeout);
+                }
+
+                // autorun local search
+                const authorsMode = await GM_getValue("authorsMode", false);
+                if (authorsMode) {
+                    (function () {
+                        // Handle the case when the window is opened in the background
+                        window.addEventListener("focus", function () {
+                            executeInitialLocalSearch("EventListener");
+                        });
+                        // Handle the case when the window is opened in the foreground
+                        // IntersectionObserver is used for better performance and reliability
+                        // compared to repeated DOM queries or fixed timeouts
+                        const observer = new IntersectionObserver((entries) => {
+                            entries.forEach((entry) => {
+                                if (entry.isIntersecting) {
+                                    executeInitialLocalSearch("IntersectionObserver");
+                                }
+                            });
+                        });
+                        // Set up the observer after a short delay to ensure DOM is loaded
+                        setTimeout(() => {
+                            const textElement = getTitleElement();
+                            if (textElement) {
+                                observer.observe(textElement);
+                            }
+                        }, 500);
+                    })();
+                }
+
+                window.addEventListener("keydown", function (event) {
+                    if (event.key === "<") {
+                        collectingLinksFromCommentsAndRgGroup();
+                    }
+                });
+                break;
+            }
+            // Redirect Page
+            case /\/redirect.php/.test(url): {
+                document.querySelector("#ckbSkipURLWarning").click();
+                document.querySelector("#redirection").click();
+                break;
+            }
+            // Video Star Listings
+            case /\/vl_star.php/.test(url): {
+                console.log("Video Star Listings");
+
+                // ToDo: highlight visited videos
+                let videoLinks = document.querySelectorAll('div[id^="vid_"] a');
+                for (let i = 0; i < videoLinks.length; i++) {
+                    if (videoLinks[i].visited) {
+                        videoLinks[i].parentNode.style.backgroundColor = "#ffe7d3";
+                    }
+                }
+
+                // open in same tab
+                setTimeout(() => {
+                    document.querySelectorAll(".video > a").forEach(function (element) {
+                        element.removeAttribute("target");
+                    });
+                }, 2000);
+
+                break;
+            }
+            // Search Page
+            case /\/search.php/.test(url): {
+                console.log("Advanced Search Section");
+
+                // open Combination Search
+                // document.querySelector("#ui-accordion-accordion-header-1 > span")?.click();
+                break;
+            }
+            // if video is not in JAVLibrary
+            case /\/vl_searchbyid.php/.test(url): {
+                if (
+                    (document.querySelector("#rightcolumn > p > em") || document.querySelector("#badalert")) &&
+                    document.querySelector("#rightcolumn > div.titlebox")
+                ) {
+                    console.log("no search results");
+
+                    avid = new URLSearchParams(window.location.search).get("keyword");
+                    if (avid) {
+                        setSearchLinks();
+                    }
+                }
+
+                // open found links in same tab
+                document.querySelectorAll(".video > a")?.forEach(function (element) {
+                    element.removeAttribute("target");
+                });
+                break;
+            }
+            case /\/videocomments.php/.test(url): {
+                console.log("Comments Page");
+
+                async function loadNextPage() {
+                    copyLinksFromCommentsToClipboard(); // Copy the comments content before loading the next page
+
+                    let currentPage = new URL(window.location.href).searchParams.get("page");
+                    let lastPageUrl = document.querySelector("#rightcolumn > div.page_selector > a.page.last")?.href;
+                    let lastPage = await GM_getValue("lastPage", null);
+
+                    // If lastPage is not set and the last page URL is available, extract and store the last page number
+                    if (!lastPage && lastPageUrl) {
+                        lastPage = new URL(lastPageUrl).searchParams.get("page");
+                        GM_setValue("lastPage", lastPage);
+                    }
+
+                    if (!currentPage) currentPage = 1;
+                    else currentPage = parseInt(currentPage);
+
+                    // If the current page is not the last page, load the next page
+                    if (currentPage < lastPage) {
+                        let nextPage = currentPage + 1;
+                        let nextUrl = new URL(window.location.href);
+                        nextUrl.searchParams.set("page", nextPage);
+                        window.location.href = nextUrl.href;
+                    } else {
+                        // not if cloudflare check happens
+                        if (!document.title.includes("Just a moment...")) {
+                            GM_deleteValue("lastPage");
+                            GM_deleteValue("executingCollectingComments");
+
+                            // go back to main page
+                            const mainPageLink = document.querySelector("#video_jacket > a");
+                            console.log(mainPageLink);
+                            if (mainPageLink) {
+                                // open link
+                                window.open(mainPageLink.href, "_self");
+                            }
+                        }
+                    }
+                }
+
+                // initialize
+                (async function () {
+                    let executingCollectingComments = await GM_getValue("executingCollectingComments", false);
+                    if (executingCollectingComments) {
+                        // await new Promise((resolve) => setTimeout(resolve, 1000));
+                        loadNextPage();
+                    } else {
+                        window.addEventListener("keydown", function (event) {
+                            if (event.key === "<") {
+                                collectingLinksFromCommentsAndRgGroup();
+                            }
+                        });
+                    }
+                })();
+
+                break;
+            }
+            // batch external download link and preview searches
+            case /^https?:\/\/javx357\.com\/.*/i.test(url):
+            case /^https?:\/\/arcjav\.com\/.*/i.test(url):
+            case /^https?:\/\/javgg\.me\/.*/i.test(url):
+            case /^https?:\/\/maxjav\.com\/.*/i.test(url):
+            case /^https?:\/\/jav\.guru\/.*/i.test(url):
+            case /^https?:\/\/supjav\.com\/.*/i.test(url):
+            case /^https?:\/\/missav\.com\/.*/i.test(url):
+            case /^https?:\/\/video-jav\.net\/.*/i.test(url):
+            case /^https?:\/\/javakiba\.org\/.*/i.test(url): {
+                let externalSearchMode = await GM_getValue("externalSearchMode", false);
+                if (externalSearchMode) {
+                    externalSearch();
+                }
+                break;
+            }
+            // copy GDrive & Rapidgator links into clipboard for JDownloader Linkgrabber and auto close
+            case /^https:\/\/drive\.google\.com\/uc.*/i.test(url):
+            case /^https:\/\/drive\.google\.com\/file\/.*/i.test(url):
+            case /^https:\/\/rapidgator\.net\/.*/i.test(url): {
+                let externalSearchMode = await GM_getValue("externalSearchMode", false);
+                if (externalSearchMode) {
+                    const urls = ["https://drive.google.com", "https://rapidgator.net/file/*"];
+                    const currentUrl = window.location.href;
+                    const match = urls.some((url) => currentUrl.match(url));
+
+                    if (match) {
+                        // Clipboard operation and window close function
+                        function copyToClipboardAndClose() {
+                            // (clipboard needs focus else gone)
+                            // navigator.clipboard.writeText(location.href);
+                            GM_setClipboard(location.href);
+                            setTimeout(() => {
+                                window.close();
+                            }, 100);
+                        }
+
+                        copyToClipboardAndClose();
+                    }
+
+                    if (document.body.textContent.includes("404 File not found")) {
+                        window.close();
+                    }
+                }
+                break;
+            }
+            // Akiba auto search and open
+            case /^https?:\/\/www\.akiba-online\.com\/search\/.*/i.test(url): {
+                function search() {
+                    // Extract the current parameter
+                    const paramName = "search";
+                    const searchTerm = new URLSearchParams(window.location.search).get(paramName);
+
+                    if (searchTerm) {
+                        document
+                            .querySelector(
+                                "#top > div.p-body > div > div.uix_contentWrapper > div > div > div > form > div > dl > dd > div > div.formSubmitRow-controls > button"
+                            )
+                            .click();
+
+                        // close window if no result
+                        setTimeout(() => {
+                            if (document.querySelector("body > div.flashMessage.is-active > div").textContent === "No results found.") {
+                                window.close();
+                            }
+                        }, 200);
+                    }
+                }
+
+                function autoOpenResults() {
+                    let posts = document.querySelectorAll("div.block-container > ol > li");
+                    const paramName = "q";
+                    const searchTerm = new URLSearchParams(window.location.search).get(paramName);
+
+                    if (posts.length === 1) {
+                        let post = posts[0];
+                        let childLink = post.querySelector("a");
+                        let postTitle = post.querySelector("h3 a");
+
+                        if (postTitle && searchTerm && postTitle.textContent.toLowerCase().includes(searchTerm.toLowerCase())) {
+                            childLink?.click();
+                        }
+                        setTimeout(function () {
+                            window.close();
+                        }, 500);
+                    } else if (posts.length >= 2) {
+                        let postTitle = document.querySelectorAll("div.block-container > ol > li h3 a");
+
+                        // Results with the Filejoker badge are usually the best result, so others can be ignored
+                        let fileJokerExclusive = document.querySelector("div.block-container > ol > li span.label--royalBlue");
+                        if (
+                            fileJokerExclusive &&
+                            searchTerm &&
+                            fileJokerExclusive.parentElement.textContent.toLowerCase().includes(searchTerm.toLowerCase())
+                        ) {
+                            fileJokerExclusive.parentElement?.click();
+                            return;
+                        }
+
+                        for (let i = 0; i < postTitle.length; i++) {
+                            let title = postTitle[i];
+
+                            if (searchTerm && !title.textContent.toLowerCase().includes(searchTerm.toLowerCase())) {
+                                title.parentElement.parentElement.parentElement.parentElement.style.display = "none";
+                            } else {
+                                window.open(title.href, "_blank");
+                            }
+                        }
+                        setTimeout(function () {
+                            window.close();
+                        }, 500);
+                    }
+                }
+
+                let externalSearchMode = await GM_getValue("externalSearchMode", false);
+                if (externalSearchMode) {
+                    // if this url then no result, so close window
+                    if (/^https?:\/\/www\.akiba-online\.com\/search\/search/i.test(url)) {
+                        window.close();
+                    }
+
+                    // use get parameter for search with form as only post parameters are allowed
+                    search();
+
+                    // open result if only one result saves clicking
+                    autoOpenResults();
+                }
+                break;
+            }
+        }
+    })();
+
+    function removeRedirects() {
+        let externalLinks = document.querySelectorAll(
+            "table[id^=comment] > tbody > tr:nth-child(1) > td.t > div a[href^='redirect.php']"
+        );
+        for (let externalLink of externalLinks) {
+            externalLink.href = decodeURIComponent(
+                externalLink.href?.replace(/https:\/\/www\.javlibrary\.com\/.*\/redirect\.php\?url=/, "").replace(/\&ver=.*/, "")
+            );
         }
     }
 
-    getAvid();
+    function removeLinkInTitle() {
+        let linkElement = document.querySelector("#video_title > h3 > a");
 
-    switch (true) {
-        // JAV Details
-        case /[a-z]{2}\/\?v=jav.*/.test(url): {
-            console.log("JAV Details");
+        if (linkElement) {
+            let spanElement = document.createElement("span");
+            spanElement.innerHTML = linkElement.innerHTML;
+            linkElement.insertAdjacentElement("beforebegin", spanElement);
+            linkElement.parentNode.removeChild(linkElement);
+        }
+    }
 
-            // TODO: needs a more solid solution than just a blind timeout
-            // maybe possible with GM_openInTab
-            let externalSearchMode = await GM_getValue("externalSearchMode", false);
-            if (externalSearchMode) {
+    function addTitleCopyPerClick() {
+        let titleElement = getTitleElement();
+
+        titleElement.style.cursor = "pointer";
+        titleElement.addEventListener("click", function () {
+            copyTitleToClipboard();
+        });
+    }
+
+    function executeInitialLocalSearch(source) {
+        const textElement = getTitleElement();
+
+        if (textElement && !avidCopiedToClipboard && document.hasFocus()) {
+            // only put once to clipboard
+            console.log(`${source}: ${avid}`);
+
+            // if tab was opened with link
+            if (history.length === 1) {
+                copyTitleToClipboard(avid)
+                    .then(() => {
+                        avidCopiedToClipboard = true;
+                        runLocalSearch();
+                    })
+                    .catch(function (err) {
+                        console.error("Failed to copy text: ", err);
+                        avidCopiedToClipboard = false;
+                    });
+            }
+        }
+    }
+
+    /**
+     * requires a local script such as AHK, which recognizes the window title
+     * as information for the execution of another local script
+     * Button and auto execute disabled if GM variable privateMode is not set
+     */
+    async function addLocalSearchButton() {
+        const authorsMode = await GM_getValue("authorsMode", false);
+
+        if (authorsMode) {
+            let targetElement = getTitleElement();
+
+            let newButton = document.createElement("button");
+            newButton.textContent = "Local-Search";
+            newButton.className = "smallbutton localsearch";
+            newButton.style = "position:relative;top:-3px;margin-left:10px";
+
+            targetElement.insertAdjacentElement("afterend", newButton);
+
+            newButton.addEventListener(
+                "click",
+                function () {
+                    copyTitleToClipboard().then(() => {
+                        runLocalSearch();
+                    });
+                },
+                false
+            );
+        }
+    }
+
+    function runLocalSearch() {
+        // not on image videos
+        if (!document.querySelector("#genre199")) {
+            document.title = "Browser Local-Search";
+            setTimeout(() => {
+                document.title = originalDocumentTitle;
+            }, 50);
+        }
+    }
+
+    function copyTitleToClipboard() {
+        return navigator.clipboard.writeText(avid);
+    }
+
+    function coverImageDownload() {
+        // big preview screen shots
+        const screenShots = document.querySelectorAll("#rightcolumn > div.previewthumbs > img");
+        for (let img of screenShots) {
+            srcBigPictures = img.src.replace(/(.*)(-[0-9].*)$/i, "$1jp$2");
+            img.src = srcBigPictures;
+        }
+
+        // rename cover image
+        let casts = document.querySelectorAll("[id^=cast] > span.star > a");
+        let newFilename = avid + " - ";
+        let iteration = casts.length;
+        for (let cast of casts) {
+            // also replace non-ASCII characters
+            newFilename += cast.textContent.replace(/[^\x00-\x7F]/g, "");
+
+            // do as long not last iteration
+            if (--iteration) newFilename += ", ";
+        }
+
+        const coverPicture = document.querySelector("#video_jacket_img");
+        const coverPictureUrl = coverPicture?.src;
+
+        coverPicture?.addEventListener(
+            "click",
+            function () {
+                GM_download({
+                    url: coverPictureUrl,
+                    headers: { referer: coverPictureUrl, origin: coverPictureUrl },
+                    name: newFilename,
+                    onload: function (download) {
+                        // Create an invisible <a> element
+                        const downloadLink = document.createElement("a");
+
+                        // Set the Blob URL as the HREF value and the filename for download
+                        downloadLink.setAttribute("download", newFilename);
+
+                        // Trigger the click event on the invisible <a> element
+                        downloadLink.click();
+                    },
+                    onerror: function (error) {
+                        console.error("Download failed:", error);
+                    },
+                });
+            },
+            {
+                once: true,
+            }
+        );
+    }
+
+    function setSearchLinks() {
+        // add search links and buttons
+        addSearchLinkAndOpenAllButton(
+            "DuckDuckGo Screens",
+            "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
+            ""
+        );
+        addSearchLinkAndOpenAllButton("DuckDuckGo", "https://duckduckgo.com/?kp=-2&q=" + '"' + avid + '"' + " JAV", "", true);
+
+        addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/?q=" + avid, "");
+        addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
+
+        addSearchLinkAndOpenAllButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + avid, "Open-Stream-Group");
+        addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Open-Stream-Group");
+        addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");
+        addSearchLinkAndOpenAllButton("JAV Most | Stream", "https://www5.javmost.com/search/" + avid, "Open-Stream-Group");
+        addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Open-Stream-Group", true);
+
+        addSearchLinkAndOpenAllButton("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + avid, "Open-GDrive-Group");
+        addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "Open-GDrive-Group");
+        addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "Open-GDrive-Group", true);
+
+        addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
+        addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
+
+        addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.com/en/search/" + avid, "Collect-Rapidgator-Links");
+        addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Collect-Rapidgator-Links");
+        addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "Collect-Rapidgator-Links", true);
+
+        addSearchLinkAndOpenAllButton("3xPlanet | Thumbnails", "https://3xplanet.com/?s=" + avid, "Search-Thumbnails-2");
+        addSearchLinkAndOpenAllButton("JAVAkiba | Thumbnails", "https://javakiba.org/?s=" + avid, "Search-Thumbnails-2");
+        addSearchLinkAndOpenAllButton("Video-JAV | Thumbnails", "http://video-jav.net/?s=" + avid, "Search-Thumbnails-2", true);
+
+        addSearchLinkAndOpenAllButton("JAV Max Quality | Thumbnails", "https://maxjav.com/?s=" + avid, "Search-Thumbnails-1");
+        addSearchLinkAndOpenAllButton(
+            "Akiba-Online | Thumbnails",
+            "https://www.akiba-online.com/search/?q=" + avid + "&c%5Btitle_only%5D=1&o=date&search=" + avid,
+            "Search-Thumbnails-1",
+            true
+        );
+
+        addSearchLinkAndOpenAllButton("Torrent-Search", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "", true);
+    }
+
+    /**
+     * Adds a search links and open all links buttons
+     *
+     * @param {*} name Name
+     * @param {*} href URL
+     * @param {*} separator Adds a space on top
+     * @param {*} className Adds a class
+     */
+    function addSearchLinkAndOpenAllButton(name, href, className, separator = false) {
+        // styles in addCSS
+
+        if (separator) {
+            separator = "added-links-separator";
+        }
+        if (className === "") className = undefined;
+
+        // after the casting container or "search tips" if the search does not return any results
+        let existingContainer = castContainer() || document.querySelector("#rightcolumn > div.titlebox");
+        let newElementContainer = document.createElement("div");
+        newElementContainer.classList.add("added-links");
+        newElementContainer.classList.add(separator);
+        newElementContainer.classList.add(className);
+
+        let newElement = document.createElement("a");
+        newElement.href = href;
+        newElement.textContent = name;
+        newElementContainer.appendChild(newElement);
+
+        // add open all links buttons
+        if (separator && className) {
+            const openAllButton = document.createElement("button");
+            const buttonTitle = className.replace(/-/g, " ");
+
+            openAllButton.textContent = buttonTitle;
+            openAllButton.className = "smallbutton smallbutton-mod";
+
+            openAllButton.addEventListener("click", function () {
+                let linksToOpen = document.querySelectorAll(`.${className}.added-links a`);
+                let reversedLinks = Array.from(linksToOpen).reverse();
+
+                // allow batch search on external sites
+                GM_setValue("externalSearchMode", true);
+
+                // TODO: needs a more solid solution without brute force
                 setTimeout(async () => {
                     GM_setValue("externalSearchMode", false);
                     console.log("externalSearchMode off");
-                }, 5000);
-            }
+                }, externalSearchModeTimeout + 2000);
 
-            // add title textbox
-            addTitleCopyPerClick();
-
-            // adds posibility for local search but disabled by default as needs addinal scripts
-            addLocalSearchButton();
-
-            // add search links
-            setSearchLinks();
-
-            // increase advertising previews
-            setAdvertisingPhotosToFullSize();
-
-            // add Cover Image Download button
-            coverImageDownload();
-
-            // Remove link by converting <a> to <span> element
-            (function () {
-                let linkElement = document.querySelector("#video_title > h3 > a");
-
-                if (linkElement) {
-                    let spanElement = document.createElement("span");
-                    spanElement.innerHTML = linkElement.innerHTML;
-                    linkElement.insertAdjacentElement("beforebegin", spanElement);
-                    linkElement.parentNode.removeChild(linkElement);
-                }
-            })();
-
-            // remove redirects from external links
-            setTimeout(() => {
-                removeRedirects();
-            }, 500);
-
-            // autorun local search
-            const authorsMode = await GM_getValue("authorsMode", false);
-            if (authorsMode) {
-                (function () {
-                    // Handle the case when the window is opened in the background
-                    window.addEventListener("focus", function () {
-                        executeInitialLocalSearch("EventListener");
+                // open in background tabs
+                if (className === "Collect-Rapidgator-Links") {
+                    reversedLinks.forEach(function (link) {
+                        GM_openInTab(link.href);
                     });
-                    // Handle the case when the window is opened in the foreground
-                    // IntersectionObserver is used for better performance and reliability
-                    // compared to repeated DOM queries or fixed timeouts
-                    const observer = new IntersectionObserver((entries) => {
-                        entries.forEach((entry) => {
-                            if (entry.isIntersecting) {
-                                executeInitialLocalSearch("IntersectionObserver");
-                            }
-                        });
+                } else {
+                    reversedLinks.forEach(function (link) {
+                        window.open(link.href);
                     });
-                    // Set up the observer after a short delay to ensure DOM is loaded
-                    setTimeout(() => {
-                        const textElement = getTitleElement();
-                        if (textElement) {
-                            observer.observe(textElement);
-                        }
-                    }, 500);
-                })();
-            }
-
-            addCastImageSearchButtons();
-            addFaceRecognitionSearchButton();
-            collectingLinksFromCommentsAndRgGroupButton();
-            makeFavoriteCastVisible();
-
-            window.addEventListener("keydown", function (event) {
-                if (event.key === "<") {
-                    collectingLinksFromCommentsAndRgGroup();
                 }
             });
-            break;
-        }
-        // Redirect Page
-        case /\/redirect.php/.test(url): {
-            document.querySelector("#ckbSkipURLWarning").click();
-            document.querySelector("#redirection").click();
-            break;
-        }
-        // Video Star Listings
-        case /\/vl_star.php/.test(url): {
-            console.log("Video Star Listings");
 
-            // ToDo: highlight visited videos
-            let videoLinks = document.querySelectorAll('div[id^="vid_"] a');
-            for (let i = 0; i < videoLinks.length; i++) {
-                if (videoLinks[i].visited) {
-                    videoLinks[i].parentNode.style.backgroundColor = "#ffe7d3";
-                }
-            }
+            newElementContainer.appendChild(openAllButton);
+        }
 
-            // open in same tab
+        existingContainer.insertAdjacentElement("afterend", newElementContainer);
+    }
+
+    function collectingLinksFromCommentsAndRgGroupButton() {
+        const target = document.querySelector("#video_info > div.added-links.added-links-separator.Collect-Rapidgator-Links ~ div");
+
+        function addButton(text, action) {
+            let button = document.createElement("button");
+            button.textContent = text;
+            button.title = "Hotkey <";
+            button.className = "smallbutton smallbutton-mod";
+            button.style = "position: relative; top: 7px;";
+            button.onclick = function () {
+                action();
+            };
+
+            target.appendChild(button);
+        }
+
+        addButton("+ Links from Comments", collectingLinksFromCommentsAndRgGroup);
+    }
+
+    // Execute when button pressed with collecting comments for importing into Jdownloader
+    function collectingLinksFromCommentsAndRgGroup() {
+        // press Open Rapidgator Group button
+        document.querySelector("#video_info > div.added-links.added-links-separator.Collect-Rapidgator-Links > button")?.click();
+
+        // go to comments page, if not already there
+        const allCommentsLink = document.querySelector("#video_comments_all > a");
+        if (allCommentsLink) {
+            // open link
+            GM_setValue("executingCollectingComments", true);
             setTimeout(() => {
-                document.querySelectorAll(".video > a").forEach(function (element) {
-                    element.removeAttribute("target");
-                });
-            }, 2000);
-
-            break;
+                window.open(allCommentsLink.href, "_self");
+            }, 200);
+        } else if (document.querySelector("#rightcolumn > div.page_selector > a.page.last")) {
+            // if already on comments page
+            GM_setValue("executingCollectingComments", true);
+            location.reload();
+        } else {
+            copyLinksFromCommentsToClipboard();
         }
-        // Search Page
-        case /\/search.php/.test(url): {
-            console.log("Advanced Search Section");
+    }
 
-            // open Combination Search
-            // document.querySelector("#ui-accordion-accordion-header-1 > span")?.click();
-            break;
+    // Function to copy the contents of the #video_comments element to the clipboard
+    // for collecting download links in apps like JDownloader
+    function copyLinksFromCommentsToClipboard() {
+        const commentsElement = document.querySelector("#video_comments");
+        if (commentsElement) {
+            const links = commentsElement.querySelectorAll("a");
+
+            // collect href attributes of links in an array
+            const commentsContent = Array.from(links)
+                // allows to disable the collection of links from a hoster by using display: none
+                // The !! converts link.offsetParent to a boolean value
+                .filter((link) => !!link.offsetParent)
+                // filter not usable
+                .filter((link) => !link.href.match(/(\.gif|\.jpg|\.jpeg|user\.php|userposts\.php|ouo\.io)/i))
+                .map((link) => link.href)
+                .join("\n");
+
+            GM_setClipboard(commentsContent);
         }
-        // if video is not in JAVLibrary
-        case /\/vl_searchbyid.php/.test(url): {
-            if (document.querySelector("#rightcolumn > p > em") && document.querySelector("#rightcolumn > div.titlebox")) {
-                console.log("no search results");
+    }
 
-                avid = new URLSearchParams(window.location.search).get("keyword");
-                if (avid) {
-                    setSearchLinks();
+    function addCastImagesSearchButtons() {
+        let castElements = document.querySelectorAll("[id^=cast]");
+        castElements.forEach(function (castElement) {
+            // create a new div to wrap the cast element
+            let containerDiv = document.createElement("div");
+            // containerDiv.className = castElement.id;
+            containerDiv.className = "cast-container";
+            castElement.parentNode.insertBefore(containerDiv, castElement);
+            containerDiv.appendChild(castElement);
+
+            // create a new div for image search buttons
+            let imageSearchDiv = document.createElement("div");
+            imageSearchDiv.className = "image-search";
+            containerDiv.appendChild(imageSearchDiv);
+
+            function addButton(text, link) {
+                let a = document.createElement("a");
+                a.target = "_blank";
+                a.textContent = text;
+                a.className = "customButton";
+                let castName = castElement.querySelector("span.star > a").textContent;
+                // reverse the order of names for better search results
+                if (castName.split(" ").length === 2 && !link.includes("minnano")) {
+                    castName = castName.split(" ").reverse().join(" ");
                 }
-            }
-
-            // open found links in same tab
-            document.querySelectorAll(".video > a")?.forEach(function (element) {
-                element.removeAttribute("target");
-            });
-            break;
-        }
-        case /\/videocomments.php/.test(url): {
-            console.log("Comments Page");
-
-            async function loadNextPage() {
-                copyLinksFromCommentsToClipboard(); // Copy the comments content before loading the next page
-
-                let currentPage = new URL(window.location.href).searchParams.get("page");
-                let lastPageUrl = document.querySelector("#rightcolumn > div.page_selector > a.page.last")?.href;
-                let lastPage = await GM_getValue("lastPage", null);
-
-                // If lastPage is not set and the last page URL is available, extract and store the last page number
-                if (!lastPage && lastPageUrl) {
-                    lastPage = new URL(lastPageUrl).searchParams.get("page");
-                    GM_setValue("lastPage", lastPage);
-                }
-
-                if (!currentPage) currentPage = 1;
-                else currentPage = parseInt(currentPage);
-
-                // If the current page is not the last page, load the next page
-                if (currentPage < lastPage) {
-                    let nextPage = currentPage + 1;
-                    let nextUrl = new URL(window.location.href);
-                    nextUrl.searchParams.set("page", nextPage);
-                    window.location.href = nextUrl.href;
-                } else {
-                    // not if cloudflare check happens
-                    if (!document.title.includes("Just a moment...")) {
-                        GM_deleteValue("lastPage");
-                        GM_deleteValue("executingCollectingComments");
-
-                        // go back to main page
-                        const mainPageLink = document.querySelector("#video_jacket > a");
-                        console.log(mainPageLink);
-                        if (mainPageLink) {
-                            // open link
-                            window.open(mainPageLink.href, "_self");
-                        }
+                if (link && castName) {
+                    if (link.includes("duckduckgo") || link.includes("yandex")) {
+                        a.href = link + '"' + castName + '"';
+                    } else {
+                        a.href = link + castName;
                     }
                 }
+
+                imageSearchDiv.appendChild(a);
             }
 
-            // initialize
-            (async function () {
-                let executingCollectingComments = await GM_getValue("executingCollectingComments", false);
-                if (executingCollectingComments) {
-                    // await new Promise((resolve) => setTimeout(resolve, 1000));
-                    loadNextPage();
-                } else {
-                    window.addEventListener("keydown", function (event) {
-                        if (event.key === "<") {
-                            collectingLinksFromCommentsAndRgGroup();
-                        }
-                    });
-                }
-            })();
+            addButton("XsList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
+            addButton("Yandex", "https://yandex.com/images/search?text=");
+            addButton("AVDBS", "https://www.avdbs.com/menu/search.php?seq=42978591&tab=1&kwd=");
+            addButton("V2PH", "https://www.v2ph.com/search/?q=");
+            addButton("JJGirls", "https://jjgirls.com/match.php?model=");
+            addButton("KawaiiThong", "https://kawaiithong.com/search_kawaii_pics/");
+            // addButton("BeautiMetas", "https://en.beautifulmetas.com/search_result/");
+            addButton("Minnano", "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word=");
+        });
+    }
 
-            break;
+    function addFaceRecognitionSearchButton() {
+        const castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
+
+        function addButton(text, link) {
+            let button = document.createElement("button");
+            button.textContent = text;
+            button.className = "smallbutton smallbutton-mod";
+            button.style = "width: unset";
+            button.onclick = function () {
+                window.open(link, "_blank");
+            };
+
+            let span = document.createElement("span");
+            span.style = "display: block; margin-top: 5px";
+            span.appendChild(button);
+
+            castContainer.appendChild(span);
         }
-        // batch external download link and preview searches
-        case /^https?:\/\/javx357\.com\/.*/i.test(url):
-        case /^https?:\/\/arcjav\.com\/.*/i.test(url):
-        case /^https?:\/\/javgg\.me\/.*/i.test(url):
-        case /^https?:\/\/maxjav\.com\/.*/i.test(url):
-        case /^https?:\/\/jav\.guru\/.*/i.test(url):
-        case /^https?:\/\/supjav\.com\/.*/i.test(url):
-        case /^https?:\/\/missav\.com\/.*/i.test(url):
-        case /^https?:\/\/video-jav\.net\/.*/i.test(url):
-        case /^https?:\/\/javakiba\.org\/.*/i.test(url): {
-            let externalSearchMode = await GM_getValue("externalSearchMode", false);
-            if (externalSearchMode) {
-                const externalSearcher = new ExternalSearch();
-                externalSearcher.main();
+
+        addButton("Find cast with facial recognition", "https://xslist.org/en/searchByImage");
+    }
+
+    async function makeFavoriteCastVisible() {
+        const favoriteClass = "favorite-star";
+
+        function addFavoriteCastCss() {
+            GM_addStyle(`
+            span[class^="icn_fav"].favorite-star {
+                background-image: url(${favoriteImage});
             }
-            break;
+            span[class^="icn_fav"] {
+                background-image: url(${nonFavoriteImage});
+                background-size: contain;
+                background-position: unset;
+                background-color: #252525;
+                border-radius: 4px;
+            }
+        `);
         }
-        // copy GDrive & Rapidgator links into clipboard for JDownloader Linkgrabber and auto close
-        case /^https:\/\/drive\.google\.com\/uc.*/i.test(url):
-        case /^https:\/\/drive\.google\.com\/file\/.*/i.test(url):
-        case /^https:\/\/rapidgator\.net\/.*/i.test(url): {
-            let externalSearchMode = await GM_getValue("externalSearchMode", false);
-            if (externalSearchMode) {
-                const urls = ["https://drive.google.com", "https://rapidgator.net/file/*"];
-                const currentUrl = window.location.href;
-                const match = urls.some((url) => currentUrl.match(url));
 
-                if (match) {
-                    // Clipboard operation and window close function
-                    function copyToClipboardAndClose() {
-                        // (clipboard needs focus else gone)
-                        // navigator.clipboard.writeText(location.href);
-                        GM_setClipboard(location.href);
-                        setTimeout(() => {
-                            window.close();
-                        }, 100);
+        function toggleFavoriteCast(event) {
+            const element = event.target;
+            const elementId = element.id;
+            const isFavorite = element.classList.toggle(favoriteClass);
+
+            // hide and auto close modal asking if cast should be added to favorites
+            waitForElement("div.noty_bar.center.alert.default").then(() => {
+                function addTemporaryCssRule() {
+                    var styleElement = GM_addStyle(`
+                    div.noty_bar.center.alert.default,
+                    div.noty_modal
+                    {
+                        display: none !important;
                     }
+                `);
 
-                    copyToClipboardAndClose();
-                }
-
-                if (document.body.textContent.includes("404 File not found")) {
-                    window.close();
-                }
-            }
-            break;
-        }
-        // Akiba auto search and open
-        case /^https?:\/\/www\.akiba-online\.com\/search\/.*/i.test(url): {
-            function search() {
-                // Extract the current parameter
-                const paramName = "search";
-                const searchTerm = new URLSearchParams(window.location.search).get(paramName);
-
-                if (searchTerm) {
-                    document
-                        .querySelector(
-                            "#top > div.p-body > div > div.uix_contentWrapper > div > div > div > form > div > dl > dd > div > div.formSubmitRow-controls > button"
-                        )
-                        .click();
-
-                    // close window if no result
-                    setTimeout(() => {
-                        if (document.querySelector("body > div.flashMessage.is-active > div").textContent === "No results found.") {
-                            window.close();
-                        }
-                    }, 200);
-                }
-            }
-
-            function autoOpenResults() {
-                let posts = document.querySelectorAll("div.block-container > ol > li");
-                if (posts.length === 1) {
-                    let post = posts[0];
-                    let childLink = post.querySelector("a");
-
-                    childLink?.click();
-                } else if (posts.length >= 2) {
-                    const paramName = "q";
-                    const searchTerm = new URLSearchParams(window.location.search).get(paramName);
-                    let postTitle = document.querySelectorAll("div.block-container > ol > li h3 a");
-
-                    let fileJokerExclusive = document.querySelector("div.block-container > ol > li span.label--royalBlue");
-                    if (
-                        fileJokerExclusive &&
-                        fileJokerExclusive.parentElement.textContent.toLowerCase().includes(searchTerm.toLowerCase())
-                    ) {
-                        fileJokerExclusive.parentElement?.click();
-                        return;
-                    }
-
-                    for (let i = 0; i < postTitle.length; i++) {
-                        let title = postTitle[i];
-
-                        if (!title.textContent.includes(searchTerm)) {
-                            title.parentElement.parentElement.parentElement.parentElement.style.display = "none";
-                        } else {
-                            window.open(title.href, "_blank");
-                        }
-                    }
+                    // Remove the CSS after the specified duration
                     setTimeout(function () {
-                        window.close();
-                    }, 500);
-                }
-            }
-
-            let externalSearchMode = await GM_getValue("externalSearchMode", false);
-            if (externalSearchMode) {
-                // if this url then no result, so close window
-                if (/^https?:\/\/www\.akiba-online\.com\/search\/search/i.test(url)) {
-                    window.close();
+                        styleElement.parentNode.removeChild(styleElement);
+                    }, 2000);
                 }
 
-                // use get parameter for search with form as only post parameters are allowed
-                search();
+                // Hide modal until we have clicked it away
+                addTemporaryCssRule();
 
-                // open result if only one result saves clicking
-                autoOpenResults();
+                // The "ok" and "close" buttons are always created immediately in the DOM and then adjusted afterwards.
+                // This means that the decision as to what must be clicked does not work with the if clause.
+                // close with ok
+                let okButton = document.querySelector(
+                    "div.noty_bar.center.alert.default > div.noty_message > div.noty_text > div.noty_buttons > button.button.green"
+                );
+                okButton?.click();
+                // if not closed with ok, then with close button which can only be clicked after a delay
+                setTimeout(() => {
+                    let closeButton = document.querySelector("div.noty_bar.center.alert.default > div.noty_message > div.noty_close");
+                    closeButton?.click();
+                }, 1000);
+            });
+
+            if (isFavorite) {
+                GM_setValue(elementId, true);
+            } else {
+                GM_deleteValue(elementId);
             }
-            break;
         }
+
+        addFavoriteCastCss();
+
+        const starElements = document.querySelectorAll("[id^=star]");
+        for (const element of starElements) {
+            const elementId = element.id;
+            const isFavoriteStar = await GM_getValue(elementId, false);
+            if (isFavoriteStar) {
+                element.classList.add(favoriteClass);
+            }
+            element.addEventListener("click", toggleFavoriteCast);
+        }
+    }
+
+    function setAdvertisingPhotosToFullSize() {
+        const advertisingPreviewImageLinks = document.querySelectorAll("#rightcolumn > div.previewthumbs > a:not(.btn_videoplayer)");
+
+        advertisingPreviewImageLinks.forEach((anchor) => {
+            const img = anchor.querySelector("img");
+            if (img) {
+                img.src = anchor.href;
+                img.removeAttribute("width");
+                img.removeAttribute("height");
+                anchor.href;
+            }
+        });
     }
 }
 
-function initializeBeforeRender() {
-    addCSS();
+// =======================================================================================
+// Video Thumbnails
+// =======================================================================================
+
+async function addVideoThumbnails() {
+    const configured = await GM_getValue("Video-Thumbnails", true);
+    if (!configured) return;
+
+    function addThumbnailCss() {
+        GM_addStyle(`
+            #videoThumbnails {
+                width: 100%;
+                margin-top: 5px;
+            }
+            #videoThumbnails > img {
+                width: 100%;
+            }
+            /* no preview info */
+            #videoThumbnails > p {
+                border-radius: 5px;
+                border: 2px solid coral;
+                padding: 10px;
+                height: 90px;
+                width: 280px;
+                align-content: center;
+                margin-top: 50px !important;
+                text-align: center;
+                margin: auto;
+            }
+            `);
+    }
+
+    function getVideoThumbnailUrl() {
+        // only in details view
+        if (!/[a-z]{2}\/\?v=jav.*/.test(url)) return;
+
+        getAvid();
+        if (!avid) {
+            console.log("getVideoThumbnailUrl: no AVID");
+            return;
+        }
+
+        // start parallel search
+        let videoThumbnailUrlFromJavLibrary = getVideoThumbnailUrlFromJavLibrary(avid);
+        let videoThumbnailUrlFromJavStore = getVideoThumbnailUrlFromJavStore(avid);
+        let videoThumbnailUrlFromBlogjav = getVideoThumbnailUrlFromBlogjav(avid);
+
+        // JavLibrary first, then BlogJAV, then JavStore
+        videoThumbnailUrlFromJavLibrary.then((imageUrl) => {
+            if (imageUrl === null || imageUrl === undefined) {
+                console.log("No usable preview image found on JavLibrary");
+                attemptBlogJavFetch();
+            } else {
+                console.log("Image URL from JavLibrary: ", imageUrl);
+                addVideoThumbnails(imageUrl);
+            }
+        });
+
+        function attemptBlogJavFetch() {
+            videoThumbnailUrlFromBlogjav.then((imageUrl) => {
+                if (imageUrl === null || imageUrl === undefined) {
+                    console.log("No preview image found on BlogJAV");
+                    attemptJavStoreFetch();
+                } else {
+                    console.log("Image URL from BlogJAV: ", imageUrl);
+                    addVideoThumbnails(imageUrl);
+                }
+            });
+        }
+
+        function attemptJavStoreFetch() {
+            videoThumbnailUrlFromJavStore.then((imageUrl) => {
+                if (imageUrl === null || imageUrl === undefined) {
+                    console.log("No preview image found on JavStore");
+                    addVideoThumbnails(null);
+                } else {
+                    console.log("Image URL from JavStore: ", imageUrl);
+                    addVideoThumbnails(imageUrl);
+                }
+            });
+        }
+
+        function addVideoThumbnails(targetImageUrl) {
+            if (document.querySelector("#videoThumbnails")) return;
+
+            console.log("Image URL being displayed: " + targetImageUrl);
+            const targetElement = document.querySelector("#video_jacket");
+
+            if (targetElement) {
+                let contentElement;
+
+                if (targetImageUrl === null) {
+                    contentElement = document.createElement("p");
+                    contentElement.innerText = "No Video Thumbnails found";
+                } else {
+                    contentElement = document.createElement("img");
+                    contentElement.src = targetImageUrl;
+                }
+
+                let container = document.createElement("div");
+                container.id = "videoThumbnails";
+
+                container.append(contentElement);
+                targetElement.insertAdjacentElement("afterend", container);
+            }
+        }
+    }
+
+    // Get big preview image URL from JavLibrary
+    async function getVideoThumbnailUrlFromJavLibrary(avid) {
+        async function searchLinkOnJavLibrary(avid) {
+            let links = document.querySelectorAll("a");
+            let searchUrl;
+
+            for (let link of links) {
+                if (
+                    link.href.toLowerCase().includes(avid.toLowerCase()) &&
+                    link.href.includes("pixhost.to")
+                    // (link.href.includes("pixhost.to") || link.href.includes("imagetwist.com"))
+                ) {
+                    searchUrl = decodeURIComponent(
+                        link.href?.replace(/https:\/\/www\.javlibrary\.com\/.*\/redirect\.php\?url=/, "").replace(/\&ver=.*/, "")
+                    );
+                    break;
+                }
+            }
+
+            if (searchUrl) {
+                return searchUrl;
+            } else {
+                return null;
+            }
+        }
+
+        async function fetchImageUrl(linkUrl) {
+            const result = await xmlhttpRequest(linkUrl, linkUrl);
+            if (!result.loadstuts) return null;
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            let image;
+
+            if (linkUrl.includes("pixhost.to")) {
+                image = doc.querySelector("#image");
+            } else if (linkUrl.includes("imagetwist.com")) {
+                image = doc.querySelector("#body > a > img");
+            }
+
+            if (image) {
+                let targetImageUrl = image.src;
+
+                // check if only a picture removed info image is shown
+                return xmlhttpRequest(targetImageUrl, targetImageUrl.replace(/^(https?:\/\/[^\/#&]+).*$/, "$1"))
+                    .then((result) => {
+                        if (result.loadstuts) {
+                            const responseHeaders = result.responseHeaders;
+                            const finalUrl = result.finalUrl;
+                            const responseUrl = responseHeaders["Location"] || finalUrl; // if forwarding
+
+                            if (
+                                targetImageUrl.replace(/^https?:\/\//, "") === responseUrl.replace(/^https?:\/\//, "") ||
+                                responseUrl.search(/removed.png/i || responseUrl.search(/error.jpg/i)) < 0
+                            ) {
+                                return targetImageUrl;
+                            } else {
+                                throw new Error('"Picture removed" placeholder');
+                            }
+                        } else {
+                            throw new Error("Loading image URL");
+                        }
+                    })
+                    .catch((error) => {
+                        console.log("The image URL obtained from JavLibrary has been removed or failed to load: " + error.message);
+                        return null;
+                    });
+            }
+            return null;
+        }
+
+        try {
+            let link = await searchLinkOnJavLibrary(avid);
+            if (link) {
+                return await fetchImageUrl(link);
+            } else {
+                return null;
+            }
+        } catch (error) {
+            console.error("Error fetching preview image URL from JAV Library:", error);
+            return null;
+        }
+    }
+
+    // Get big preview image URL from Blogjav
+    async function getVideoThumbnailUrlFromBlogjav(avid) {
+        async function searchLinkOnBlogjav(avid) {
+            const searchUrl = `https://blogjav.net/?s=${avid}`;
+            const result = await xmlhttpRequest(searchUrl);
+            if (!result.loadstuts) {
+                console.error("Connection error when searching on BlogJAV");
+                return null;
+            }
+            return findLinkInDocument(result.responseText, avid, ".entry-title a");
+        }
+
+        async function fetchImageUrl(linkUrl) {
+            const result = await xmlhttpRequest(linkUrl, "https://pixhost.to/");
+            if (!result.loadstuts) return null;
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            const imageArray = doc.querySelectorAll(
+                '.entry-content a img[data-lazy-src*="imagetwist."],.entry-content a img[data-lazy-src*="pixhost."]'
+            );
+            if (imageArray.length > 0) {
+                let targetImageUrl = imageArray[imageArray.length - 1].dataset.lazySrc;
+                targetImageUrl = targetImageUrl
+                    .replace("thumbs", "images")
+                    .replace("//t", "//img")
+                    .replace(/[\?*\"*]/g, "")
+                    .replace("/th/", "/i/");
+                if (/imagetwist/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
+
+                // check if only a picture removed image is shown
+                return xmlhttpRequest(targetImageUrl, targetImageUrl.replace(/^(https?:\/\/[^\/#&]+).*$/, "$1"))
+                    .then((result) => {
+                        if (result.loadstuts) {
+                            const responseHeaders = result.responseHeaders;
+                            const finalUrl = result.finalUrl;
+                            const responseUrl = responseHeaders["Location"] || finalUrl; // if forwarding
+
+                            if (
+                                targetImageUrl.replace(/^https?:\/\//, "") === responseUrl.replace(/^https?:\/\//, "") ||
+                                responseUrl.search(/removed.png/i) < 0
+                            ) {
+                                return targetImageUrl;
+                            } else {
+                                throw new Error('"Picture removed" placeholder');
+                            }
+                        } else {
+                            throw new Error("Loading image URL");
+                        }
+                    })
+                    .catch((error) => {
+                        console.log("The image URL obtained from BlogJAV has been removed or failed to load: " + error.message);
+                        return null;
+                    });
+            }
+            return null;
+        }
+
+        try {
+            let link = await searchLinkOnBlogjav(avid);
+            if (link) {
+                return await fetchImageUrl(link.href);
+            } else {
+                return null;
+            }
+        } catch (error) {
+            console.error("Error fetching preview image URL from BlogJAV:", error);
+            return null;
+        }
+    }
+
+    // Get big preview image URL from JavStore
+    async function getVideoThumbnailUrlFromJavStore(avid) {
+        async function searchLinkOnJavStore(avid) {
+            const searchUrl = `https://javstore.net/search/${avid}.html`;
+            const result = await xmlhttpRequest(searchUrl);
+
+            if (!result.loadstuts) {
+                console.error("Connection error when searching on JavStore");
+                return null;
+            }
+
+            return findLinkInDocument(result.responseText, avid, `.news_1n li h3 span a`);
+        }
+
+        async function fetchImageUrl(linkUrl) {
+            const result = await xmlhttpRequest(linkUrl, "http://pixhost.to/");
+
+            if (!result.loadstuts) {
+                console.error("Connection error when searching on JavStore");
+                return null;
+            }
+
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            const imageArray = doc.querySelectorAll('.news a font[size*="+1"],.news a img[alt*=".th"]');
+            let imageUrl = imageArray[imageArray.length - 1].parentElement.href;
+
+            if (imageArray.length > 0) {
+                if (!imageUrl.includes("http://")) {
+                    if (imageArray[0].tagName === "IMG") {
+                        imageUrl = imageArray[imageArray.length - 1].src;
+                        imageUrl = imageUrl
+                            .replace("pixhost.org", "pixhost.to")
+                            .replace(".th", "")
+                            .replace("thumbs", "images")
+                            .replace("//t", "//img")
+                            .replace(/[\?*\"*]/g, "");
+
+                        if (/imagetwist/gi.test(imageUrl)) imageUrl = imageUrl.replace(".jpg", ".jpeg");
+                    }
+                    return imageUrl;
+                } else {
+                    console.log(
+                        'The image URL obtained from JavStore has been removed or failed to load: "Picture removed" placeholder'
+                    );
+                }
+            }
+            return null;
+        }
+
+        try {
+            const link = await searchLinkOnJavStore(avid);
+            if (link) {
+                const imageUrl = await fetchImageUrl(link.href);
+                return imageUrl;
+            } else {
+                return null;
+            }
+        } catch (error) {
+            console.error("Error fetching preview image URL from JavStore:", error);
+        }
+    }
+
+    function xmlhttpRequest(url, referer = "", timeout = externalSearchTimeout) {
+        return new Promise((resolve, reject) => {
+            // console.log(`request: ${url}`);
+            let details = {
+                method: "GET",
+                url: url,
+                headers: {
+                    Referer: referer,
+                    "User-Agent": "Mozilla/5.0 (x64; rv) Gecko Firefox",
+                },
+                timeout: timeout,
+                onload: function (response) {
+                    if (response.status >= 200 && response.status < 300) {
+                        resolve({
+                            loadstuts: true,
+                            responseHeaders: response.responseHeaders,
+                            responseText: response.responseText,
+                            finalUrl: response.finalUrl,
+                        });
+                    } else {
+                        resolve({ loadstuts: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
+                    }
+                },
+                onerror: function (response) {
+                    console.log(`${details.url} : error`);
+                    reject({ loadstuts: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
+                },
+                ontimeout: function (response) {
+                    console.log(`${details.url} ${details.timeout}ms timeout`);
+                    reject({ loadstuts: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
+                },
+            };
+            GM_xmlhttpRequest(details);
+        });
+    }
+
+    function findLinkInDocument(responseText, avid, selector) {
+        let link = null;
+        const doc = new DOMParser().parseFromString(responseText, "text/html");
+        const linkElements = doc.querySelectorAll(selector);
+
+        if (linkElements) {
+            // for debugging
+            // linkElements.forEach((element) => {
+            //     console.log(element.textContent);
+            // });
+
+            // check only the first 5 results
+            for (let i = 0; i < linkElements.length && i < 5; i++) {
+                // const regexp = new RegExp(avid.replace(/-/g, ".*"), "gi");
+                // replacing each hyphen '-' with '-?', making the hyphen optional
+                const regexp = new RegExp(avid.replace(/-/g, "-?"), "gi");
+                if (linkElements[i].innerHTML.search(regexp) > 0) {
+                    if (!link) link = linkElements[i];
+                    // prioritize the full HD version
+                    if (linkElements[i].innerHTML.search(/FHD/i) > 0) {
+                        link = linkElements[i];
+                        break;
+                    }
+                }
+            }
+        }
+
+        return link;
+    }
+
+    getVideoThumbnailUrl();
+    addThumbnailCss();
+}
+
+// =======================================================================================
+// Configuration Menu
+// =======================================================================================
+
+function configurationMenu() {
+    GM_addStyle(`
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.6);
+        z-index: 9998;
+        transition: background-color 0.5s ease;
+    }
+    
+    .modal {
+        font-family: var(--ipt-font-family);
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 300px;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 10px;
+        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+        z-index: 9999;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+    }
+    
+    .modal-title {
+        margin-bottom: 20px;
+        font-size: 16px;
+        font-weight: bold;
+    }
+    
+    .checkbox-label {
+        display: block;
+        margin-bottom: 10px;
+    }
+    
+    .close-button {
+        display: block;
+        margin: 30px auto 0;
+        font-size: unset;
+    }
+    `);
+
+    // Darken background
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.style.backgroundColor = "rgba(0, 0, 0, 0)";
+    setTimeout(() => {
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+    }, 50);
+
+    // Create modal
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    setTimeout(() => {
+        modal.style.opacity = "1";
+    }, 50);
+
+    // Title of the modal
+    const title = document.createElement("h3");
+    title.innerText = "Which features should be used?";
+    title.className = "modal-title";
+    modal.appendChild(title);
+
+    // Add checkboxes
+    configurationOptions.forEach((option) => {
+        const label = document.createElement("label");
+        label.className = "checkbox-label";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = GM_getValue(option, true);
+
+        checkbox.addEventListener("change", () => {
+            GM_setValue(option, checkbox.checked);
+        });
+
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(` ${option}`));
+        modal.appendChild(label);
+    });
+
+    // Add button to close
+    const closeButton = document.createElement("button");
+    closeButton.innerText = "Apply Settings";
+    closeButton.className = "close-button smallbutton";
+
+    closeButton.addEventListener("click", () => {
+        document.body.removeChild(overlay);
+        document.body.removeChild(modal);
+        location.reload();
+    });
+
+    modal.appendChild(closeButton);
+
+    // Add modal and overlay to the DOM
+    document.body.appendChild(overlay);
+    document.body.appendChild(modal);
+
+    // Close modal on click outside
+    overlay.addEventListener("click", () => {
+        document.body.removeChild(overlay);
+        document.body.removeChild(modal);
+    });
+}
+
+// =======================================================================================
+// Main
+// =======================================================================================
+
+async function initializeBeforeRender() {
+    const configured = await GM_getValue("Improvements", true);
+    if (!configured) return;
+
+    addImprovementsCss();
 
     switch (true) {
         // JAV Details
@@ -1255,19 +1845,41 @@ function initializeBeforeRender() {
     }
 }
 
-// do nothing if cloudflare check happens
-if (!document.title.includes("Just a moment...")) {
-    initializeBeforeRender();
+function main() {
+    // do nothing if cloudflare check happens
+    if (!document.title.includes("Just a moment...")) {
+        // Cloudflare rate limit handling
+        if (document.title.includes("Access denied")) {
+            setTimeout(() => {
+                location.reload();
+            }, 10000);
+        } else {
+            initializeBeforeRender();
 
-    // Sometimes the EventListener is not executed to prevent this:
-    // Check if the DOM is already loaded before adding the event listener
-    // If it's still loading, add the event listener for "DOMContentLoaded"
-    // If it's already loaded, execute the main function immediately
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", main, { once: true });
-    } else {
-        main();
+            // // set default configuration
+            // configurationOptions.forEach((option) => {
+            //     // Query default value (if does not exist, 'null' is returned)
+            //     const existingValue = GM_getValue(option, null);
+            //     if (existingValue === null) {
+            //         // Value does not exist, set default value to true
+            //         GM_setValue(option, true);
+            //     }
+            // });
+
+            // Sometimes the EventListener is not executed to prevent this:
+            // Check if the DOM is already loaded before adding the event listener
+            // If it's still loading, add the event listener for "DOMContentLoaded"
+            // If it's already loaded, execute the main function immediately
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", addImprovements, { once: true });
+                document.addEventListener("DOMContentLoaded", addVideoThumbnails, { once: true });
+            } else {
+                addImprovements();
+                addVideoThumbnails();
+            }
+        }
     }
 }
 
+main();
 // GM_setValue("authorsMode", true);

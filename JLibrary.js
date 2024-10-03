@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
-// @description    Many improvements mainly in details view of a video for recherche: video thumbnails below cover, easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241001
+// @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
+// @version        20241003
 // @author         resykano
-// @icon           https://icons.duckduckgo.com/ip2/javlibrary.com.ico
+// @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
 // @match          *://x75p.com/*
 // @match          *://*.y78k.com/*
@@ -16,6 +16,9 @@
 // @match          *://missav.com/*
 // @match          *://video-jav.net/*
 // @match          *://www.akiba-online.com/search/*
+// @connect        blogjav.net
+// @connect        javstore.net
+// @connect        pixhost.to
 // @grant          GM_registerMenuCommand
 // @grant          GM_xmlHttpRequest
 // @grant          GM_download
@@ -197,7 +200,7 @@ function addImprovementsCss() {
 
                 /* addSearchLinkAndOpenAllButton & addFaceRecognitionSearchToCasts */
                 button.smallbutton-mod {
-                    margin-left: 2px;
+                    margin-left: 5px;
                     margin-top: 0;
                     margin-bottom: 0;
                     padding: 3px;
@@ -244,7 +247,8 @@ function addImprovementsCss() {
 
                 /* addImageSearchToCasts */
                 .cast-container {
-                    display: block;
+                    display: flex;
+                    flex-wrap: wrap;
                     margin: 0px 2px 2px;
                     border-radius: 5px;
                     /* 
@@ -253,17 +257,20 @@ function addImprovementsCss() {
                     */
                 }
                 span.cast {
+                    display: flex;
+                    flex-wrap: nowrap;
+                    align-items: center;
                     margin-bottom: 0;
-                    /* padding: 0; */
+                    margin-right: 0;
                 }
                 .image-search {
                     display: flex;
                     flex-wrap: wrap;
+                    align-content: flex-end;
                     padding: 0 3px;
                 }
                 .customButton {
                     font-size: 12px;
-                    cursor: default;
                     background-color: #f9f9f9;
                     padding-block: 2px;
                     padding-inline: 6px;
@@ -1243,6 +1250,7 @@ async function addImprovements() {
                 background-position: unset;
                 background-color: #252525;
                 border-radius: 4px;
+                margin-left: 4px;
             }
         `);
         }
@@ -1527,11 +1535,9 @@ async function addVideoThumbnails() {
             const result = await xmlhttpRequest(linkUrl, "https://pixhost.to/");
             if (!result.loadstuts) return null;
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const imageArray = doc.querySelectorAll(
-                '.entry-content a img[data-lazy-src*="imagetwist."],.entry-content a img[data-lazy-src*="pixhost."]'
-            );
+            const imageArray = doc.querySelectorAll('.entry-content a img[src*="imagetwist."],.entry-content a img[src*="pixhost."]');
             if (imageArray.length > 0) {
-                let targetImageUrl = imageArray[imageArray.length - 1].dataset.lazySrc;
+                let targetImageUrl = imageArray[imageArray.length - 1].src;
                 targetImageUrl = targetImageUrl
                     .replace("thumbs", "images")
                     .replace("//t", "//img")
@@ -1595,7 +1601,7 @@ async function addVideoThumbnails() {
         }
 
         async function fetchImageUrl(linkUrl) {
-            const result = await xmlhttpRequest(linkUrl, "http://pixhost.to/");
+            const result = await xmlhttpRequest(linkUrl, "https://pixhost.to/");
 
             if (!result.loadstuts) {
                 console.error("Connection error when searching on JavStore");
@@ -1644,7 +1650,7 @@ async function addVideoThumbnails() {
 
     function xmlhttpRequest(url, referer = "", timeout = externalSearchTimeout) {
         return new Promise((resolve, reject) => {
-            // console.log(`request: ${url}`);
+            console.log(`request: ${url}`);
             let details = {
                 method: "GET",
                 url: url,

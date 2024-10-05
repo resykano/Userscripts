@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241003
+// @version        20241005
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -47,7 +47,7 @@ let avid = null;
 // allowed execution time of Collect Rapidgator Link & Thumbnails Search
 const externalSearchModeTimeout = 8000;
 // fetching of data from other websites
-const externalSearchTimeout = 10000;
+const externalSearchTimeout = 20000;
 const configurationOptions = ["Improvements", "Video-Thumbnails"];
 
 function getTitleElement() {
@@ -1532,12 +1532,15 @@ async function addVideoThumbnails() {
         }
 
         async function fetchImageUrl(linkUrl) {
-            const result = await xmlhttpRequest(linkUrl, "https://pixhost.to/");
+            const result = await xmlhttpRequest(linkUrl);
             if (!result.loadstuts) return null;
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const imageArray = doc.querySelectorAll('.entry-content a img[src*="imagetwist."],.entry-content a img[src*="pixhost."]');
-            if (imageArray.length > 0) {
-                let targetImageUrl = imageArray[imageArray.length - 1].src;
+            const imageNodeList = doc.querySelectorAll(
+                '.entry-content a img[data-src*="pixhost."], .entry-content a img[data-src*="imagetwist."]'
+            );
+
+            if (imageNodeList.length > 0) {
+                let targetImageUrl = imageNodeList[imageNodeList.length - 1].dataset.src;
                 targetImageUrl = targetImageUrl
                     .replace("thumbs", "images")
                     .replace("//t", "//img")
@@ -1609,13 +1612,13 @@ async function addVideoThumbnails() {
             }
 
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const imageArray = doc.querySelectorAll('.news a font[size*="+1"],.news a img[alt*=".th"]');
-            let imageUrl = imageArray[imageArray.length - 1].parentElement.href;
+            const imageNodeList = doc.querySelectorAll('.news a font[size*="+1"],.news a img[alt*=".th"]');
+            let imageUrl = imageNodeList[imageNodeList.length - 1].parentElement.href;
 
-            if (imageArray.length > 0) {
+            if (imageNodeList.length > 0) {
                 if (!imageUrl.includes("http://")) {
-                    if (imageArray[0].tagName === "IMG") {
-                        imageUrl = imageArray[imageArray.length - 1].src;
+                    if (imageNodeList[0].tagName === "IMG") {
+                        imageUrl = imageNodeList[imageNodeList.length - 1].src;
                         imageUrl = imageUrl
                             .replace("pixhost.org", "pixhost.to")
                             .replace(".th", "")

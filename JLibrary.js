@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241005
+// @version        20241007
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -19,6 +19,8 @@
 // @connect        blogjav.net
 // @connect        javstore.net
 // @connect        pixhost.to
+// @connect        imagetwist.com
+// @connect        imagehaha.com
 // @grant          GM_registerMenuCommand
 // @grant          GM_xmlHttpRequest
 // @grant          GM_download
@@ -1063,6 +1065,9 @@ async function addImprovements() {
 
         let newElement = document.createElement("a");
         newElement.href = href;
+        if (name.includes("JAVDAILY")) {
+            console.log(newElement.href);
+        }
         newElement.textContent = name;
         newElementContainer.appendChild(newElement);
 
@@ -1440,76 +1445,71 @@ async function addVideoThumbnails() {
     // Get big preview image URL from JavLibrary
     async function getVideoThumbnailUrlFromJavLibrary(avid) {
         async function searchLinkOnJavLibrary(avid) {
-            let links = document.querySelectorAll("a");
-            let searchUrl;
+            let linkNodeList = document.querySelectorAll("a");
+            let targetImageUrl;
 
-            for (let link of links) {
+            for (let linkNode of linkNodeList) {
                 if (
-                    link.href.toLowerCase().includes(avid.toLowerCase()) &&
-                    link.href.includes("pixhost.to")
-                    // (link.href.includes("pixhost.to") || link.href.includes("imagetwist.com"))
+                    linkNode.href.toLowerCase().includes(avid.toLowerCase()) &&
+                    (linkNode.href.includes("pixhost.to") ||
+                        linkNode.href.includes("imagetwist.com") ||
+                        linkNode.href.includes("imagehaha.com"))
                 ) {
-                    searchUrl = decodeURIComponent(
-                        link.href?.replace(/https:\/\/www\.javlibrary\.com\/.*\/redirect\.php\?url=/, "").replace(/\&ver=.*/, "")
-                    );
-                    break;
+                    targetImageUrl = linkNode.querySelector("img")?.src;
+                    if (targetImageUrl) {
+                        break;
+                    }
                 }
             }
 
-            if (searchUrl) {
-                return searchUrl;
-            } else {
-                return null;
-            }
-        }
+            if (targetImageUrl) {
+                targetImageUrl = targetImageUrl
+                    .replace("thumbs", "images")
+                    .replace("//t", "//img")
+                    .replace(/[\?*\"*]/g, "")
+                    .replace("/th/", "/i/");
+                if (/imagehaha/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
 
-        async function fetchImageUrl(linkUrl) {
-            const result = await xmlhttpRequest(linkUrl, linkUrl);
-            if (!result.loadstuts) return null;
-            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            let image;
-
-            if (linkUrl.includes("pixhost.to")) {
-                image = doc.querySelector("#image");
-            } else if (linkUrl.includes("imagetwist.com")) {
-                image = doc.querySelector("#body > a > img");
-            }
-
-            if (image) {
-                let targetImageUrl = image.src;
-
-                // check if only a picture removed info image is shown
-                return xmlhttpRequest(targetImageUrl, targetImageUrl.replace(/^(https?:\/\/[^\/#&]+).*$/, "$1"))
-                    .then((result) => {
-                        if (result.loadstuts) {
-                            const responseHeaders = result.responseHeaders;
-                            const finalUrl = result.finalUrl;
-                            const responseUrl = responseHeaders["Location"] || finalUrl; // if forwarding
-
-                            if (
-                                targetImageUrl.replace(/^https?:\/\//, "") === responseUrl.replace(/^https?:\/\//, "") ||
-                                responseUrl.search(/removed.png/i || responseUrl.search(/error.jpg/i)) < 0
-                            ) {
-                                return targetImageUrl;
-                            } else {
-                                throw new Error('"Picture removed" placeholder');
-                            }
+                return fetchImageAsBlob(targetImageUrl)
+                    .then((blob) => {
+                        if (blob) {
+                            return URL.createObjectURL(blob);
                         } else {
-                            throw new Error("Loading image URL");
+                            throw new Error('"Picture removed" placeholder or failed to load');
                         }
                     })
                     .catch((error) => {
-                        console.log("The image URL obtained from JavLibrary has been removed or failed to load: " + error.message);
-                        return null;
+                        console.log("The image URL obtained has been removed or failed to load: " + error.message);
+                        return Promise.resolve();
                     });
             }
             return null;
         }
 
+        async function fetchImageAsBlob(url) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: url,
+                    responseType: "blob",
+                    onload: function (response) {
+                        if (response.status === 200) {
+                            resolve(response.response);
+                        } else {
+                            reject(new Error(`Failed to fetch image: ${response.status}`));
+                        }
+                    },
+                    onerror: function (error) {
+                        reject(error);
+                    },
+                });
+            });
+        }
+
         try {
-            let link = await searchLinkOnJavLibrary(avid);
-            if (link) {
-                return await fetchImageUrl(link);
+            let blobUrl = await searchLinkOnJavLibrary(avid);
+            if (blobUrl) {
+                return blobUrl;
             } else {
                 return null;
             }
@@ -1524,7 +1524,7 @@ async function addVideoThumbnails() {
         async function searchLinkOnBlogjav(avid) {
             const searchUrl = `https://blogjav.net/?s=${avid}`;
             const result = await xmlhttpRequest(searchUrl);
-            if (!result.loadstuts) {
+            if (!result.isSuccess) {
                 console.error("Connection error when searching on BlogJAV");
                 return null;
             }
@@ -1533,7 +1533,7 @@ async function addVideoThumbnails() {
 
         async function fetchImageUrl(linkUrl) {
             const result = await xmlhttpRequest(linkUrl);
-            if (!result.loadstuts) return null;
+            if (!result.isSuccess) return null;
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
             const imageNodeList = doc.querySelectorAll(
                 '.entry-content a img[data-src*="pixhost."], .entry-content a img[data-src*="imagetwist."]'
@@ -1551,7 +1551,7 @@ async function addVideoThumbnails() {
                 // check if only a picture removed image is shown
                 return xmlhttpRequest(targetImageUrl, targetImageUrl.replace(/^(https?:\/\/[^\/#&]+).*$/, "$1"))
                     .then((result) => {
-                        if (result.loadstuts) {
+                        if (result.isSuccess) {
                             const responseHeaders = result.responseHeaders;
                             const finalUrl = result.finalUrl;
                             const responseUrl = responseHeaders["Location"] || finalUrl; // if forwarding
@@ -1595,7 +1595,7 @@ async function addVideoThumbnails() {
             const searchUrl = `https://javstore.net/search/${avid}.html`;
             const result = await xmlhttpRequest(searchUrl);
 
-            if (!result.loadstuts) {
+            if (!result.isSuccess) {
                 console.error("Connection error when searching on JavStore");
                 return null;
             }
@@ -1606,7 +1606,7 @@ async function addVideoThumbnails() {
         async function fetchImageUrl(linkUrl) {
             const result = await xmlhttpRequest(linkUrl, "https://pixhost.to/");
 
-            if (!result.loadstuts) {
+            if (!result.isSuccess) {
                 console.error("Connection error when searching on JavStore");
                 return null;
             }
@@ -1665,22 +1665,23 @@ async function addVideoThumbnails() {
                 onload: function (response) {
                     if (response.status >= 200 && response.status < 300) {
                         resolve({
-                            loadstuts: true,
+                            isSuccess: true,
                             responseHeaders: response.responseHeaders,
                             responseText: response.responseText,
                             finalUrl: response.finalUrl,
+                            response,
                         });
                     } else {
-                        resolve({ loadstuts: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
+                        resolve({ isSuccess: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
                     }
                 },
                 onerror: function (response) {
                     console.log(`${details.url} : error`);
-                    reject({ loadstuts: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
+                    reject({ isSuccess: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
                 },
                 ontimeout: function (response) {
                     console.log(`${details.url} ${details.timeout}ms timeout`);
-                    reject({ loadstuts: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
+                    reject({ isSuccess: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
                 },
             };
             GM_xmlhttpRequest(details);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241012
+// @version        20241012a
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1478,6 +1478,9 @@ async function addVideoThumbnails() {
                 return fetchImageAsBlob(targetImageUrl)
                     .then((blob) => {
                         if (blob) {
+                            if (blob.size < 20 * 1024) {
+                                throw new Error('wrong image as its smaller than 20 KB');
+                            }
                             return URL.createObjectURL(blob);
                         } else {
                             throw new Error('"Picture removed" placeholder or failed to load');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241012a
+// @version        20241012b
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1383,12 +1383,6 @@ async function addVideoThumbnails() {
             return;
         }
 
-        const sources = [
-            { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },
-            { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
-            { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
-        ];
-
         function addVideoThumbnails(targetImageUrl) {
             if (document.querySelector("#videoThumbnails")) return;
 
@@ -1414,11 +1408,17 @@ async function addVideoThumbnails() {
             }
         }
 
+        const sources = [
+            { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },
+            { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
+            { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
+        ];
+
         async function findThumbnails(avid) {
             const searches = sources.map((source) =>
                 source.fetcher(avid).then((imageUrl) => {
                     if (imageUrl) {
-                        console.log(`Image URL from ${source.name}: ${imageUrl}`);
+                        console.log(`Image URL found ${source.name}: ${imageUrl}`);
                         return { source: source.name, imageUrl };
                     }
                     console.log(`No usable preview image found on ${source.name}`);
@@ -1427,14 +1427,19 @@ async function addVideoThumbnails() {
             );
 
             try {
-                const neverResolvePromise = new Promise(() => {});
-                const racePromises = searches.map((searchPromise) => searchPromise.then((result) => result || neverResolvePromise));
-                const result = await Promise.race(racePromises);
+                let foundImage = false;
+                await Promise.all(
+                    searches.map((searchPromise) =>
+                        searchPromise.then((result) => {
+                            if (result && !foundImage) {
+                                foundImage = true;
+                                addVideoThumbnails(result.imageUrl);
+                            }
+                        })
+                    )
+                );
 
-                if (result) {
-                    console.log(`Found image from ${result.source}`);
-                    addVideoThumbnails(result.imageUrl);
-                } else {
+                if (!foundImage) {
                     console.log("No preview image found from any source");
                     addVideoThumbnails(null);
                 }
@@ -1479,7 +1484,7 @@ async function addVideoThumbnails() {
                     .then((blob) => {
                         if (blob) {
                             if (blob.size < 20 * 1024) {
-                                throw new Error('wrong image as its smaller than 20 KB');
+                                throw new Error("wrong image as its smaller than 20 KB");
                             }
                             return URL.createObjectURL(blob);
                         } else {

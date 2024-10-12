@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241007
+// @version        20241012
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1018,6 +1018,16 @@ async function addImprovements() {
         addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "Open-GDrive-Group");
         addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "Open-GDrive-Group", true);
 
+        // addSearchLinkAndOpenAllButton(
+        //     "JAVDAILY | RG  (optional)",
+        //     `https://duckduckgo.com/?q=site:javdaily.eklablog.com+${avid}`,
+        //     ""
+        // );
+        // addSearchLinkAndOpenAllButton(
+        //     "JAVDAILY | RG  (optional)",
+        //     `https://duckduckgo.com/?q=site:javdaily31.eklablog.com+${avid}`,
+        //     ""
+        // );
         addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
         addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
 
@@ -1065,9 +1075,6 @@ async function addImprovements() {
 
         let newElement = document.createElement("a");
         newElement.href = href;
-        if (name.includes("JAVDAILY")) {
-            console.log(newElement.href);
-        }
         newElement.textContent = name;
         newElementContainer.appendChild(newElement);
 
@@ -1376,45 +1383,11 @@ async function addVideoThumbnails() {
             return;
         }
 
-        // start parallel search
-        let videoThumbnailUrlFromJavLibrary = getVideoThumbnailUrlFromJavLibrary(avid);
-        let videoThumbnailUrlFromJavStore = getVideoThumbnailUrlFromJavStore(avid);
-        let videoThumbnailUrlFromBlogjav = getVideoThumbnailUrlFromBlogjav(avid);
-
-        // JavLibrary first, then BlogJAV, then JavStore
-        videoThumbnailUrlFromJavLibrary.then((imageUrl) => {
-            if (imageUrl === null || imageUrl === undefined) {
-                console.log("No usable preview image found on JavLibrary");
-                attemptBlogJavFetch();
-            } else {
-                console.log("Image URL from JavLibrary: ", imageUrl);
-                addVideoThumbnails(imageUrl);
-            }
-        });
-
-        function attemptBlogJavFetch() {
-            videoThumbnailUrlFromBlogjav.then((imageUrl) => {
-                if (imageUrl === null || imageUrl === undefined) {
-                    console.log("No preview image found on BlogJAV");
-                    attemptJavStoreFetch();
-                } else {
-                    console.log("Image URL from BlogJAV: ", imageUrl);
-                    addVideoThumbnails(imageUrl);
-                }
-            });
-        }
-
-        function attemptJavStoreFetch() {
-            videoThumbnailUrlFromJavStore.then((imageUrl) => {
-                if (imageUrl === null || imageUrl === undefined) {
-                    console.log("No preview image found on JavStore");
-                    addVideoThumbnails(null);
-                } else {
-                    console.log("Image URL from JavStore: ", imageUrl);
-                    addVideoThumbnails(imageUrl);
-                }
-            });
-        }
+        const sources = [
+            { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },
+            { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
+            { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
+        ];
 
         function addVideoThumbnails(targetImageUrl) {
             if (document.querySelector("#videoThumbnails")) return;
@@ -1440,6 +1413,38 @@ async function addVideoThumbnails() {
                 targetElement.insertAdjacentElement("afterend", container);
             }
         }
+
+        async function findThumbnails(avid) {
+            const searches = sources.map((source) =>
+                source.fetcher(avid).then((imageUrl) => {
+                    if (imageUrl) {
+                        console.log(`Image URL from ${source.name}: ${imageUrl}`);
+                        return { source: source.name, imageUrl };
+                    }
+                    console.log(`No usable preview image found on ${source.name}`);
+                    return null;
+                })
+            );
+
+            try {
+                const neverResolvePromise = new Promise(() => {});
+                const racePromises = searches.map((searchPromise) => searchPromise.then((result) => result || neverResolvePromise));
+                const result = await Promise.race(racePromises);
+
+                if (result) {
+                    console.log(`Found image from ${result.source}`);
+                    addVideoThumbnails(result.imageUrl);
+                } else {
+                    console.log("No preview image found from any source");
+                    addVideoThumbnails(null);
+                }
+            } catch (error) {
+                console.error("Error during thumbnail search:", error);
+                addVideoThumbnails(null);
+            }
+        }
+
+        findThumbnails(avid);
     }
 
     // Get big preview image URL from JavLibrary
@@ -1701,9 +1706,11 @@ async function addVideoThumbnails() {
 
             // check only the first 5 results
             for (let i = 0; i < linkElements.length && i < 5; i++) {
-                // const regexp = new RegExp(avid.replace(/-/g, ".*"), "gi");
-                // replacing each hyphen '-' with '-?', making the hyphen optional
-                const regexp = new RegExp(avid.replace(/-/g, "-?"), "gi");
+                // replace hyphens with optional hyphens
+                const flexibleAvid = avid.replace(/-/g, "-?");
+                // Matches AVID only if not preceded by a letter, preventing false positives for shorter AVIDs like SS-070
+                const regexp = new RegExp(`(?<![a-zA-Z])${flexibleAvid}`, "gi");
+
                 if (linkElements[i].innerHTML.search(regexp) > 0) {
                     if (!link) link = linkElements[i];
                     // prioritize the full HD version

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241012b
+// @version        20241016
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1005,7 +1005,7 @@ async function addImprovements() {
         );
         addSearchLinkAndOpenAllButton("DuckDuckGo", "https://duckduckgo.com/?kp=-2&q=" + '"' + avid + '"' + " JAV", "", true);
 
-        addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/?q=" + avid, "");
+        addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/en?q=" + avid, "");
         addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
 
         addSearchLinkAndOpenAllButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + avid, "Open-Stream-Group");
@@ -1408,17 +1408,18 @@ async function addVideoThumbnails() {
             }
         }
 
-        const sources = [
-            { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },
-            { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
-            { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
-        ];
-
+        
         async function findThumbnails(avid) {
+            const sources = [
+                { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },
+                { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
+                { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
+            ];
+
             const searches = sources.map((source) =>
                 source.fetcher(avid).then((imageUrl) => {
                     if (imageUrl) {
-                        console.log(`Image URL found ${source.name}: ${imageUrl}`);
+                        console.log(`Image URL found on ${source.name}: ${imageUrl}`);
                         return { source: source.name, imageUrl };
                     }
                     console.log(`No usable preview image found on ${source.name}`);

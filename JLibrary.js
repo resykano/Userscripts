@@ -16,6 +16,7 @@
 // @match          *://missav.com/*
 // @match          *://video-jav.net/*
 // @match          *://www.akiba-online.com/search/*
+// @match          *://bt1207so.top/?find*
 // @connect        blogjav.net
 // @connect        javstore.net
 // @connect        pixhost.to
@@ -845,6 +846,24 @@ async function addImprovements() {
                 }
                 break;
             }
+            // BT1207
+            case /^https?:\/\/bt1207so\.top\/\?find.*/i.test(url): {
+                const searchParams = new URLSearchParams(window.location.search);
+                const search = searchParams.get("find") || "";
+                const searchInput = document.querySelector("#search-form > div.input-group > input");
+
+                if (searchInput) {
+                    searchInput.value = search;
+
+                    if (search) {
+                        const searchButton = document.querySelector("#search-form > div.input-group > span > button");
+                        if (searchButton) {
+                            searchButton.click();
+                        }
+                    }
+                }
+                break;
+            }
         }
     })();
 
@@ -1047,7 +1066,9 @@ async function addImprovements() {
             true
         );
 
-        addSearchLinkAndOpenAllButton("Torrent-Search", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "", true);
+        addSearchLinkAndOpenAllButton("Torrent-Search-Sukebei", "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid, "");
+        addSearchLinkAndOpenAllButton("Torrent-Search-BT1207", "https://bt1207so.top/?find=" + avid, "");
+        addSearchLinkAndOpenAllButton("Torrent-Search-BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "", true);
     }
 
     /**
@@ -1408,7 +1429,6 @@ async function addVideoThumbnails() {
             }
         }
 
-        
         async function findThumbnails(avid) {
             const sources = [
                 { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },

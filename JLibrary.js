@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241016
+// @version        20241029
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -194,11 +194,26 @@ function addImprovementsCss() {
                     width: 370px;
                     height: 17px;
                     display: flex;
-                    align-items: flex-end;
+                    align-items: center;
                     justify-content: space-between;
                 }
                 .added-links-separator {
                     margin-top: 10px;
+                }
+                .added-links.Torrent {
+                    display: inline-block;
+                    width: auto;
+                    margin-left: 5px;
+                }
+                .added-links.added-links-separator.Torrent {
+                    margin-left: 40px;
+                }
+                .added-links.added-links-separator.Torrent::before {
+                    content: "Searches: ";
+                    font-weight: bold;
+                }
+                .added-links.Torrent:not(.added-links-separator)::before {
+                    content: " • ";
                 }
 
                 /* addSearchLinkAndOpenAllButton & addFaceRecognitionSearchToCasts */
@@ -638,8 +653,8 @@ async function addImprovements() {
                 // document.querySelector("#ui-accordion-accordion-header-1 > span")?.click();
                 break;
             }
-            // if video is not in JAVLibrary
             case /\/vl_searchbyid.php/.test(url): {
+                // if video is not in JAVLibrary
                 if (
                     (document.querySelector("#rightcolumn > p > em") || document.querySelector("#badalert")) &&
                     document.querySelector("#rightcolumn > div.titlebox")
@@ -650,12 +665,36 @@ async function addImprovements() {
                     if (avid) {
                         setSearchLinks();
                     }
+                } else {
+                    /**
+                     * Filters video elements based on keyword in URL
+                     * Hides videos that don't match the keyword
+                     */
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const keyword = urlParams.get("keyword")?.toLowerCase();
+
+                    if (window.location.href.includes("vl_searchbyid.php?keyword=") && keyword) {
+                        const videoElements = document.querySelectorAll("div.video");
+
+                        videoElements.forEach((video) => {
+                            const idElement = video.querySelector("a > div.id");
+
+                            if (idElement) {
+                                const idText = idElement.textContent.trim().toLowerCase();
+
+                                if (idText !== keyword) {
+                                    video.style.display = "none";
+                                }
+                            }
+                        });
+                    }
+
+                    // open found links in same tab
+                    document.querySelectorAll(".video > a")?.forEach(function (element) {
+                        element.removeAttribute("target");
+                    });
                 }
 
-                // open found links in same tab
-                document.querySelectorAll(".video > a")?.forEach(function (element) {
-                    element.removeAttribute("target");
-                });
                 break;
             }
             case /\/videocomments.php/.test(url): {
@@ -983,6 +1022,7 @@ async function addImprovements() {
             // do as long not last iteration
             if (--iteration) newFilename += ", ";
         }
+        newFilename = newFilename + ".jpg";
 
         const coverPicture = document.querySelector("#video_jacket_img");
         const coverPictureUrl = coverPicture?.src;
@@ -1066,9 +1106,9 @@ async function addImprovements() {
             true
         );
 
-        addSearchLinkAndOpenAllButton("Torrent-Search-Sukebei", "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid, "");
-        addSearchLinkAndOpenAllButton("Torrent-Search-BT1207", "https://bt1207so.top/?find=" + avid, "");
-        addSearchLinkAndOpenAllButton("Torrent-Search-BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "", true);
+        addSearchLinkAndOpenAllButton("BT1207", "https://bt1207so.top/?find=" + avid, "Torrent");
+        addSearchLinkAndOpenAllButton("Sukebei", "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid, "Torrent");
+        addSearchLinkAndOpenAllButton("BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "Torrent", true);
     }
 
     /**
@@ -1079,20 +1119,15 @@ async function addImprovements() {
      * @param {*} separator Adds a space on top
      * @param {*} className Adds a class
      */
-    function addSearchLinkAndOpenAllButton(name, href, className, separator = false) {
+    function addSearchLinkAndOpenAllButton(name, href, className, separator) {
         // styles in addCSS
-
-        if (separator) {
-            separator = "added-links-separator";
-        }
-        if (className === "") className = undefined;
 
         // after the casting container or "search tips" if the search does not return any results
         let existingContainer = castContainer() || document.querySelector("#rightcolumn > div.titlebox");
         let newElementContainer = document.createElement("div");
         newElementContainer.classList.add("added-links");
-        newElementContainer.classList.add(separator);
-        newElementContainer.classList.add(className);
+        if (separator) newElementContainer.classList.add("added-links-separator");
+        if (className) newElementContainer.classList.add(className);
 
         let newElement = document.createElement("a");
         newElement.href = href;
@@ -1100,7 +1135,7 @@ async function addImprovements() {
         newElementContainer.appendChild(newElement);
 
         // add open all links buttons
-        if (separator && className) {
+        if (separator && className && className !== "Torrent") {
             const openAllButton = document.createElement("button");
             const buttonTitle = className.replace(/-/g, " ");
 
@@ -1144,7 +1179,7 @@ async function addImprovements() {
         function addButton(text, action) {
             let button = document.createElement("button");
             button.textContent = text;
-            button.title = "Hotkey <";
+            button.title = "Hotkey: <";
             button.className = "smallbutton smallbutton-mod";
             button.style = "position: relative; top: 7px;";
             button.onclick = function () {

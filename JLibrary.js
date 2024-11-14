@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241029
+// @version        20241114
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -50,7 +50,7 @@ let avid = null;
 // allowed execution time of Collect Rapidgator Link & Thumbnails Search
 const externalSearchModeTimeout = 8000;
 // fetching of data from other websites
-const externalSearchTimeout = 20000;
+const externalSearchTimeout = 15000;
 const configurationOptions = ["Improvements", "Video-Thumbnails"];
 
 function getTitleElement() {
@@ -941,11 +941,11 @@ async function addImprovements() {
         const textElement = getTitleElement();
 
         if (textElement && !avidCopiedToClipboard && document.hasFocus()) {
-            // only put once to clipboard
-            console.log(`${source}: ${avid}`);
-
             // if tab was opened with link
             if (history.length === 1) {
+                // put once to clipboard
+                // console.log(`${source}: ${avid}`);
+
                 copyTitleToClipboard(avid)
                     .then(() => {
                         avidCopiedToClipboard = true;
@@ -1016,9 +1016,10 @@ async function addImprovements() {
         let newFilename = avid + " - ";
         let iteration = casts.length;
         for (let cast of casts) {
-            // also replace non-ASCII characters
-            newFilename += cast.textContent.replace(/[^\x00-\x7F]/g, "");
-
+            // also replace non-ASCII characters but only if something is still left
+            const replaced = cast.textContent.replace(/[^\x00-\x7F]/g, "");
+            newFilename += replaced.length > 0 ? replaced : cast.textContent;
+            
             // do as long not last iteration
             if (--iteration) newFilename += ", ";
         }
@@ -1108,6 +1109,8 @@ async function addImprovements() {
 
         addSearchLinkAndOpenAllButton("BT1207", "https://bt1207so.top/?find=" + avid, "Torrent");
         addSearchLinkAndOpenAllButton("Sukebei", "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid, "Torrent");
+        addSearchLinkAndOpenAllButton("Bitsearch", "https://bitsearch.to/search?sort=size&q=" + avid, "Torrent");
+        addSearchLinkAndOpenAllButton("BTDig", "https://btdig.com/search?order=3&q=" + avid, "Torrent");
         addSearchLinkAndOpenAllButton("BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "Torrent", true);
     }
 
@@ -1278,6 +1281,7 @@ async function addImprovements() {
             addButton("JJGirls", "https://jjgirls.com/match.php?model=");
             addButton("KawaiiThong", "https://kawaiithong.com/search_kawaii_pics/");
             // addButton("BeautiMetas", "https://en.beautifulmetas.com/search_result/");
+            // https://en.girlgirlgo.net
             addButton("Minnano", "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word=");
         });
     }

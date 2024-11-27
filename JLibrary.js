@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241114
+// @version        20241127
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1004,23 +1004,23 @@ async function addImprovements() {
     }
 
     function coverImageDownload() {
-        // big preview screen shots
+        const downloadedFiles = {}; // Zwischenspeicher für heruntergeladene Dateien
+
+        // Big preview screen shots
         const screenShots = document.querySelectorAll("#rightcolumn > div.previewthumbs > img");
         for (let img of screenShots) {
-            srcBigPictures = img.src.replace(/(.*)(-[0-9].*)$/i, "$1jp$2");
+            let srcBigPictures = img.src.replace(/(.*)(-[0-9].*)$/i, "$1jp$2");
             img.src = srcBigPictures;
         }
 
-        // rename cover image
+        // Rename cover image
         let casts = document.querySelectorAll("[id^=cast] > span.star > a");
         let newFilename = avid + " - ";
         let iteration = casts.length;
         for (let cast of casts) {
-            // also replace non-ASCII characters but only if something is still left
             const replaced = cast.textContent.replace(/[^\x00-\x7F]/g, "");
             newFilename += replaced.length > 0 ? replaced : cast.textContent;
-            
-            // do as long not last iteration
+
             if (--iteration) newFilename += ", ";
         }
         newFilename = newFilename + ".jpg";
@@ -1028,32 +1028,47 @@ async function addImprovements() {
         const coverPicture = document.querySelector("#video_jacket_img");
         const coverPictureUrl = coverPicture?.src;
 
-        coverPicture?.addEventListener(
-            "click",
-            function () {
-                GM_download({
-                    url: coverPictureUrl,
-                    headers: { referer: coverPictureUrl, origin: coverPictureUrl },
-                    name: newFilename,
-                    onload: function (download) {
-                        // Create an invisible <a> element
+        if (coverPictureUrl) {
+            // Download and cache file
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: coverPictureUrl,
+                responseType: "blob",
+                headers: { referer: coverPictureUrl, origin: coverPictureUrl },
+                onload: function (response) {
+                    // Save image as blob
+                    downloadedFiles[newFilename] = response.response;
+                },
+                onerror: function (error) {
+                    console.error(`Error downloading ${coverPictureUrl}:`, error);
+                },
+            });
+
+            // Click event for the download
+            coverPicture?.addEventListener(
+                "click",
+                function () {
+                    const blob = downloadedFiles[newFilename];
+                    if (blob) {
+                        const blobUrl = URL.createObjectURL(blob);
+
+                        // Create invisible <a> element
                         const downloadLink = document.createElement("a");
+                        downloadLink.href = blobUrl;
+                        downloadLink.download = newFilename;
 
-                        // Set the Blob URL as the HREF value and the filename for download
-                        downloadLink.setAttribute("download", newFilename);
-
-                        // Trigger the click event on the invisible <a> element
+                        // Trigger of the click on the invisible <a>
                         downloadLink.click();
-                    },
-                    onerror: function (error) {
-                        console.error("Download failed:", error);
-                    },
-                });
-            },
-            {
-                once: true,
-            }
-        );
+
+                        // Release URL after use
+                        URL.revokeObjectURL(blobUrl);
+                    } else {
+                        console.error("Image not cached. Please reload the page.");
+                    }
+                },
+                { once: true }
+            );
+        }
     }
 
     function setSearchLinks() {
@@ -1063,7 +1078,12 @@ async function addImprovements() {
             "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
             ""
         );
-        addSearchLinkAndOpenAllButton("DuckDuckGo", "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + '"' + avid + '"' + " JAV", "", true);
+        addSearchLinkAndOpenAllButton(
+            "DuckDuckGo",
+            "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + '"' + avid + '"' + " JAV",
+            "",
+            true
+        );
 
         addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/en?q=" + avid, "");
         addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
@@ -1478,19 +1498,18 @@ async function addVideoThumbnails() {
             try {
                 for (let source of sources) {
                     const imageUrl = await source.fetcher(avid);
-                    
+
                     if (imageUrl) {
                         console.log(`Image URL found on ${source.name}: ${imageUrl}`);
                         addVideoThumbnails(imageUrl);
                         return;
                     }
-                    
+
                     console.log(`No usable preview image found on ${source.name}`);
                 }
-        
+
                 console.log("No preview image found from any source");
                 addVideoThumbnails(null);
-        
             } catch (error) {
                 console.error("Error during thumbnail search:", error);
                 addVideoThumbnails(null);

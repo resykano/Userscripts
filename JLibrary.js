@@ -50,7 +50,7 @@ let avid = null;
 // allowed execution time of Collect Rapidgator Link & Thumbnails Search
 const externalSearchModeTimeout = 8000;
 // fetching of data from other websites
-const externalSearchTimeout = 15000;
+const externalSearchTimeout = 10000;
 const configurationOptions = ["Improvements", "Video-Thumbnails"];
 
 function getTitleElement() {
@@ -1063,7 +1063,7 @@ async function addImprovements() {
             "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
             ""
         );
-        addSearchLinkAndOpenAllButton("DuckDuckGo", "https://duckduckgo.com/?kp=-2&q=" + '"' + avid + '"' + " JAV", "", true);
+        addSearchLinkAndOpenAllButton("DuckDuckGo", "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + '"' + avid + '"' + " JAV", "", true);
 
         addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/en?q=" + avid, "");
         addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
@@ -1471,38 +1471,26 @@ async function addVideoThumbnails() {
         async function findThumbnails(avid) {
             const sources = [
                 { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },
-                { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
                 { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
+                { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
             ];
 
-            const searches = sources.map((source) =>
-                source.fetcher(avid).then((imageUrl) => {
+            try {
+                for (let source of sources) {
+                    const imageUrl = await source.fetcher(avid);
+                    
                     if (imageUrl) {
                         console.log(`Image URL found on ${source.name}: ${imageUrl}`);
-                        return { source: source.name, imageUrl };
+                        addVideoThumbnails(imageUrl);
+                        return;
                     }
+                    
                     console.log(`No usable preview image found on ${source.name}`);
-                    return null;
-                })
-            );
-
-            try {
-                let foundImage = false;
-                await Promise.all(
-                    searches.map((searchPromise) =>
-                        searchPromise.then((result) => {
-                            if (result && !foundImage) {
-                                foundImage = true;
-                                addVideoThumbnails(result.imageUrl);
-                            }
-                        })
-                    )
-                );
-
-                if (!foundImage) {
-                    console.log("No preview image found from any source");
-                    addVideoThumbnails(null);
                 }
+        
+                console.log("No preview image found from any source");
+                addVideoThumbnails(null);
+        
             } catch (error) {
                 console.error("Error during thumbnail search:", error);
                 addVideoThumbnails(null);

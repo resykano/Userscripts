@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
-// @description    Enables seamless scrolling through images and videos through keyboard and mouse wheel navigation in timeline (up/down & left/right keys) and lightbox view (same keys + mousewheel). Its also a workaround against the Element jumps on timeline pagination/scrolling issue #8565.
-// @version        20241201
+// @description    Enables navigation through images and videos in timeline (up/down & left/right keys) and lightbox (same keys + mousewheel) view. Its also a workaround against the jumps on timeline pagination/scrolling issue #8565
+// @version        20241201a
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*

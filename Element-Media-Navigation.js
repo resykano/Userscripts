@@ -306,12 +306,7 @@ function main() {
         const lightbox = document.querySelector(".mx_Dialog_lightbox");
         if (lightbox) {
             waitForElement(".mx_ImageView").then((element) => {
-                element.addEventListener("mousedown", (event) => {
-                    const target = event.target;
-                    if (target.matches(".mx_Dialog_background.mx_Dialog_staticBackground")) {
-                        closeImageBox(event);
-                    }
-                });
+                element.addEventListener("mousedown", closeImageBox);
                 element.addEventListener("wheel", getWheelDirection, { passive: false });
             }, true);
         } else {

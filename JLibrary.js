@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241127
+// @version        20241222
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -50,7 +50,7 @@ let avid = null;
 // allowed execution time of Collect Rapidgator Link & Thumbnails Search
 const externalSearchModeTimeout = 8000;
 // fetching of data from other websites
-const externalSearchTimeout = 10000;
+const externalSearchTimeout = 5000;
 const configurationOptions = ["Improvements", "Video-Thumbnails"];
 
 function getTitleElement() {
@@ -1088,6 +1088,7 @@ async function addImprovements() {
         addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/en?q=" + avid, "");
         addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
 
+        addSearchLinkAndOpenAllButton("HighPorn | Stream", "https://highporn.net/search/videos?search_query=" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");
@@ -1098,17 +1099,17 @@ async function addImprovements() {
         addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "Open-GDrive-Group");
         addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "Open-GDrive-Group", true);
 
-        // addSearchLinkAndOpenAllButton(
-        //     "JAVDAILY | RG  (optional)",
-        //     `https://duckduckgo.com/?q=site:javdaily.eklablog.com+${avid}`,
-        //     ""
-        // );
+        addSearchLinkAndOpenAllButton(
+            "JAVDAILY | RG  (optional)",
+            `https://duckduckgo.com/?q=site:javdaily.eklablog.com+"${avid}"`,
+            ""
+        );
         // addSearchLinkAndOpenAllButton(
         //     "JAVDAILY | RG  (optional)",
         //     `https://duckduckgo.com/?q=site:javdaily31.eklablog.com+${avid}`,
         //     ""
         // );
-        addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
+        // addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
         addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
 
         addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.com/en/search/" + avid, "Collect-Rapidgator-Links");

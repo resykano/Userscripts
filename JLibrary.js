@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241222
+// @version        20241224
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -837,10 +837,9 @@ async function addImprovements() {
 
                         if (postTitle && searchTerm && postTitle.textContent.toLowerCase().includes(searchTerm.toLowerCase())) {
                             childLink?.click();
-                        }
-                        setTimeout(function () {
+                        } else {
                             window.close();
-                        }, 500);
+                        }
                     } else if (posts.length >= 2) {
                         let postTitle = document.querySelectorAll("div.block-container > ol > li h3 a");
 
@@ -1088,7 +1087,11 @@ async function addImprovements() {
         addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/en?q=" + avid, "");
         addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
 
-        addSearchLinkAndOpenAllButton("HighPorn | Stream", "https://highporn.net/search/videos?search_query=" + avid, "Open-Stream-Group");
+        addSearchLinkAndOpenAllButton(
+            "HighPorn | Stream",
+            "https://highporn.net/search/videos?search_query=" + avid,
+            "Open-Stream-Group"
+        );
         addSearchLinkAndOpenAllButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");

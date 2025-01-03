@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping a bit against the jumps on timeline pagination/scrolling issue #8565
-// @version        20241204
+// @version        20250102
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -190,6 +190,7 @@ function closeImageBox() {
     if (currentElement) {
         setActiveElement(currentElement);
     }
+    console.log("isInView");
 
     const closeButton = document.querySelector(".mx_AccessibleButton.mx_ImageView_button.mx_ImageView_button_close");
     if (closeButton) closeButton.click();
@@ -306,7 +307,14 @@ function main() {
         const lightbox = document.querySelector(".mx_Dialog_lightbox");
         if (lightbox) {
             waitForElement(".mx_ImageView").then((element) => {
-                element.addEventListener("mousedown", closeImageBox);
+                element.addEventListener("mousedown", (event) => {
+                    const target = event.target;
+                    // close only if clicking the background
+                    if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper")) {
+                        console.log("closeImageBox");
+                        closeImageBox();
+                    }
+                });
                 element.addEventListener("wheel", getWheelDirection, { passive: false });
             }, true);
         } else {
@@ -317,6 +325,6 @@ function main() {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
-if (/^element\.[^.]+\.[^.]+$/.test(document.location.host)) {
+if (/^element\.[^.]+\.[^.]+$/.test(document.location.host) || /^matrixclient\.[^.]+\.[^.]+$/.test(document.location.host)) {
     main();
 }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping a bit against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250102
+// @version        20250106
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -19,6 +19,7 @@
 // =======================================================================================
 
 let messageContainerSelector = "ol.mx_RoomView_MessageList li.mx_EventTile";
+const activeElementClass = "active-element";
 
 // =======================================================================================
 // Layout
@@ -75,9 +76,10 @@ function waitForElement(selector, index = 0, timeout = 5000) {
  * @param {WheelEvent} event - Wheel event.
  */
 function getWheelDirection(event) {
+    event.stopPropagation();
+
     const direction = event.deltaY < 0 ? "up" : "down";
     navigateTo(direction);
-    replaceContentInLightbox();
 }
 
 /**
@@ -116,42 +118,57 @@ function getCurrentElement() {
  * @param {string} direction - "up" or "down".
  */
 function navigateTo(direction) {
-    const currentElement = document.querySelector("[data-active]") || getCurrentElement();
+    // const currentElement = document.querySelector(`.${activeClass}`) || getCurrentElement();
+    let currentElement;
+    if (document.querySelector(`.${activeElementClass}`)) {
+        currentElement = document.querySelector(`.${activeElementClass}`);
+    } else {
+        console.error("activeElement not found");
+        currentElement = getCurrentElement();
+    }
     const siblingType = direction === "down" ? "nextElementSibling" : "previousElementSibling";
-    const nextElement = findSibling(currentElement, siblingType);
+    const nextActiveElement = findSibling(currentElement, siblingType);
 
-    if (nextElement) {
-        setActiveElement(nextElement);
+    if (nextActiveElement) {
+        console.log("nextActiveElement: ", nextActiveElement);
+        setActiveElement(nextActiveElement);
+    }
+
+    if (document.querySelector(".mx_Dialog_lightbox")) {
+        replaceContentInLightbox();
     }
 }
 
 /**
  * Sets an element as the active one and scrolls it into view.
- * @param {Element} element - DOM element to set active.
+ * @param {Element} nextActiveElement - DOM element to set active.
  */
-function setActiveElement(element) {
-    const activeClass = "active-element";
-    const currentActive = document.querySelector(`.${activeClass}`);
-    if (currentActive) {
-        currentActive.classList.remove(activeClass);
-        currentActive.removeAttribute("data-active");
-    }
+function setActiveElement(nextActiveElement) {
+    if (nextActiveElement) {
+        removeActiveElement();
 
-    if (element) {
-        element.classList.add(activeClass);
-        element.setAttribute("data-active", "true");
-        element.scrollIntoView({
-            block: isLastElement(element) ? "end" : "center",
+        nextActiveElement.classList.add(activeElementClass);
+        nextActiveElement.scrollIntoView({
+            block: isLastElement(nextActiveElement) ? "end" : "center",
             behavior: "auto",
         });
+    } else {
+        console.error("setActiveElement: nextActiveElement not found");
     }
 }
 
+/**
+ * Removes the "active-element" class from the currently active element.
+ * 
+ * This function searches for an element with the class name stored in the 
+ * variable `activeElementClass` and removes the "active-element" class from it.
+ * If no such element is found, the function does nothing.
+ */
 function removeActiveElement() {
-    const activeElement = document.querySelector("[data-active]"); // Find the currently active element
+    const activeElement = document.querySelector(`.${activeElementClass}`); // Find the currently active element
     if (activeElement) {
+        console.error("removeActiveElement");
         activeElement.classList.remove("active-element"); // Remove the active class
-        activeElement.removeAttribute("data-active"); // Remove the data-active attribute
     }
 }
 
@@ -190,7 +207,6 @@ function closeImageBox() {
     if (currentElement) {
         setActiveElement(currentElement);
     }
-    console.log("isInView");
 
     const closeButton = document.querySelector(".mx_AccessibleButton.mx_ImageView_button.mx_ImageView_button_close");
     if (closeButton) closeButton.click();
@@ -229,7 +245,7 @@ function replaceContentInLightbox() {
 
     imageLightboxSelector.setAttribute("controls", "");
 
-    let currentElement = document.querySelector("[data-active]");
+    let currentElement = document.querySelector(`.${activeElementClass}`);
     if (!currentElement) {
         currentElement = getCurrentElement();
     }
@@ -275,53 +291,62 @@ function main() {
     document.addEventListener(
         "keydown",
         function (event) {
+            // if in lightbox
             if (document.querySelector(".mx_Dialog_lightbox")) {
-                // Navigation in lightbox
-                if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-                    event.preventDefault();
-                    navigateTo("up");
-                    replaceContentInLightbox();
-                } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
-                    event.preventDefault();
-                    navigateTo("down");
-                    replaceContentInLightbox();
-                } else if (event.key === "Escape") {
+                if (event.key === "Escape") {
                     event.stopPropagation();
                     closeImageBox();
                 }
-            } else {
-                // Navigation in timeline
-                if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-                    event.preventDefault();
-                    navigateTo("up");
-                } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
-                    event.preventDefault();
-                    navigateTo("down");
-                }
+            }
+            // Navigation
+            if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+                event.preventDefault();
+                navigateTo("up");
+            } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+                event.preventDefault();
+                navigateTo("down");
             }
         },
         true
     );
 
+    // add listeners only once
+    let lightboxListenersAdded = false;
+    let timelineListenerAdded = false;
+
     const observer = new MutationObserver(() => {
         const lightbox = document.querySelector(".mx_Dialog_lightbox");
-        if (lightbox) {
+
+        if (lightbox && !lightboxListenersAdded) {
+            // Remove timeline wheel listener when lightbox opens
+            if (timelineListenerAdded) {
+                document.removeEventListener("wheel", removeActiveElement, { passive: false });
+                timelineListenerAdded = false;
+            }
+
             waitForElement(".mx_ImageView").then((element) => {
                 element.addEventListener("mousedown", (event) => {
                     const target = event.target;
-                    // close only if clicking the background
+                    // close lighbox if clicking the background
                     if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper")) {
-                        console.log("closeImageBox");
                         closeImageBox();
                     }
                 });
                 element.addEventListener("wheel", getWheelDirection, { passive: false });
+
+                lightboxListenersAdded = true;
             }, true);
-        } else {
+            // Timeline view mode
+        } else if (!lightbox && !timelineListenerAdded) {
+            // remove ActiveElement in timeline view to allow scrolling
             document.addEventListener("wheel", removeActiveElement, { passive: false });
+
+            timelineListenerAdded = true;
+            lightboxListenersAdded = false; // Reset the lightbox listener flag when lightbox is closed
         }
     });
 
+    // to detect when the light box is switched on or off
     observer.observe(document.body, { childList: true, subtree: true });
 }
 

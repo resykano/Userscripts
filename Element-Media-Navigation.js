@@ -343,7 +343,7 @@ function main() {
             waitForElement(".mx_ImageView").then((element) => {
                 // Check if the event listeners are already added
                 if (!element._listenersAdded) {
-                    element.addEventListener("mousedown", (event) => {
+                    element.addEventListener("click", (event) => {
                         const target = event.target;
                         // Close lightbox if clicking the background
                         if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper > img")) {

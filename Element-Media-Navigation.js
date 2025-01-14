@@ -26,6 +26,7 @@ const activeElementClass = "active-element";
 // =======================================================================================
 
 GM_addStyle(`
+    /* Lightbox */
     img.mx_ImageView_image.mx_ImageView_image_animating,
     img.mx_ImageView_image.mx_ImageView_image_animatingLoading {
         transition: transform 0.01s ease;
@@ -35,15 +36,19 @@ GM_addStyle(`
         height: 100% !important;
         object-fit: contain;
     }
+    .mx_ImageView > .mx_ImageView_image_wrapper > img {
+        cursor: default !important;
+    }
+    /* unused lightbox header */
+    .mx_ImageView_panel {
+        display: none;
+    }
     
     .active-element > div.mx_EventTile_line.mx_EventTile_mediaLine.mx_EventTile_image {
         box-shadow: 0 0 2px 2px #007a62;
         background-color: var(--cpd-color-bg-subtle-secondary);
     }
 
-    .mx_ImageView > .mx_ImageView_image_wrapper > img {
-        cursor: default !important;
-    }
 `);
 
 // =======================================================================================

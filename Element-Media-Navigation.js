@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping a bit against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250106
+// @version        20250114
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -26,12 +26,23 @@ const activeElementClass = "active-element";
 // =======================================================================================
 
 GM_addStyle(`
-    .mx_ImageView_image.mx_ImageView_image_animatingLoading {
+    img.mx_ImageView_image.mx_ImageView_image_animating,
+    img.mx_ImageView_image.mx_ImageView_image_animatingLoading {
         transition: transform 0.01s ease;
+        transition: none !important;
+        transform: unset !important;
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: contain;
     }
+    
     .active-element > div.mx_EventTile_line.mx_EventTile_mediaLine.mx_EventTile_image {
         box-shadow: 0 0 2px 2px #007a62;
         background-color: var(--cpd-color-bg-subtle-secondary);
+    }
+
+    .mx_ImageView > .mx_ImageView_image_wrapper > img {
+        cursor: default !important;
     }
 `);
 
@@ -159,8 +170,8 @@ function setActiveElement(nextActiveElement) {
 
 /**
  * Removes the "active-element" class from the currently active element.
- * 
- * This function searches for an element with the class name stored in the 
+ *
+ * This function searches for an element with the class name stored in the
  * variable `activeElementClass` and removes the "active-element" class from it.
  * If no such element is found, the function does nothing.
  */
@@ -325,14 +336,21 @@ function main() {
             }
 
             waitForElement(".mx_ImageView").then((element) => {
-                element.addEventListener("mousedown", (event) => {
-                    const target = event.target;
-                    // close lighbox if clicking the background
-                    if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper")) {
-                        closeImageBox();
-                    }
-                });
-                element.addEventListener("wheel", getWheelDirection, { passive: false });
+                // Check if the event listeners are already added
+                if (!element._listenersAdded) {
+                    element.addEventListener("mousedown", (event) => {
+                        const target = event.target;
+                        // Close lightbox if clicking the background
+                        if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper > img")) {
+                            closeImageBox();
+                        }
+                    });
+
+                    element.addEventListener("wheel", getWheelDirection, { passive: false });
+
+                    // Mark the listener as added
+                    element._listenersAdded = true;
+                }
 
                 lightboxListenersAdded = true;
             }, true);

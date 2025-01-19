@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping a bit against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250114
+// @version        20250118
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -358,6 +358,12 @@ function main() {
                 }
 
                 lightboxListenersAdded = true;
+
+                // set first opened image in lightbox as active element in timeline view
+                const src = document.querySelector('.mx_ImageView > .mx_ImageView_image_wrapper > img').src;
+                const img = document.querySelector(`ol.mx_RoomView_MessageList img[src="${src}"]`);
+                const messageContainer = img.closest('li');
+                setActiveElement(messageContainer);
             }, true);
             // Timeline view mode
         } else if (!lightbox && !timelineListenerAdded) {

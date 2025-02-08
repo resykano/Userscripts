@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20241224
+// @version        20250208
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -13,7 +13,7 @@
 // @match          *://maxjav.com/*
 // @match          *://jav.guru/*
 // @match          *://supjav.com/*
-// @match          *://missav.com/*
+// @match          *://missav.ai/*
 // @match          *://video-jav.net/*
 // @match          *://www.akiba-online.com/search/*
 // @match          *://bt1207so.top/?find*
@@ -508,7 +508,7 @@ function externalSearch() {
             case ["arcjav.com", "javgg.me", "javx357.com"].includes(hostname):
                 handleGoogleDrivePages();
                 break;
-            case ["jav.guru", "supjav.com", "missav.com"].includes(hostname):
+            case ["jav.guru", "supjav.com", "missav.ai"].includes(hostname):
                 handleRapidgatorPages();
                 break;
         }
@@ -826,47 +826,42 @@ async function addImprovements() {
                 }
 
                 function autoOpenResults() {
-                    let posts = document.querySelectorAll("div.block-container > ol > li");
+                    const postTitles = document.querySelectorAll("div.block-container > ol > li h3 a");
                     const paramName = "q";
-                    const searchTerm = new URLSearchParams(window.location.search).get(paramName);
+                    const searchTerm = new URLSearchParams(window.location.search).get(paramName)?.toLowerCase();
 
-                    if (posts.length === 1) {
-                        let post = posts[0];
-                        let childLink = post.querySelector("a");
-                        let postTitle = post.querySelector("h3 a");
+                    if (postTitles.length === 0) return;
 
-                        if (postTitle && searchTerm && postTitle.textContent.toLowerCase().includes(searchTerm.toLowerCase())) {
-                            childLink?.click();
+                    // Helper function to check if a title matches the search term
+                    const isMatchingTitle = (element, term) => element?.textContent.toLowerCase().includes(term);
+
+                    if (postTitles.length === 1) {
+                        if (searchTerm && isMatchingTitle(postTitles[0], searchTerm)) {
+                            postTitles[0].click();
                         } else {
                             window.close();
                         }
-                    } else if (posts.length >= 2) {
-                        let postTitle = document.querySelectorAll("div.block-container > ol > li h3 a");
-
-                        // Results with the Filejoker badge are usually the best result, so others can be ignored
-                        let fileJokerExclusive = document.querySelector("div.block-container > ol > li span.label--royalBlue");
-                        if (
-                            fileJokerExclusive &&
-                            searchTerm &&
-                            fileJokerExclusive.parentElement.textContent.toLowerCase().includes(searchTerm.toLowerCase())
-                        ) {
-                            fileJokerExclusive.parentElement?.click();
-                            return;
-                        }
-
-                        for (let i = 0; i < postTitle.length; i++) {
-                            let title = postTitle[i];
-
-                            if (searchTerm && !title.textContent.toLowerCase().includes(searchTerm.toLowerCase())) {
-                                title.parentElement.parentElement.parentElement.parentElement.style.display = "none";
-                            } else {
-                                window.open(title.href, "_blank");
-                            }
-                        }
-                        setTimeout(function () {
-                            window.close();
-                        }, 500);
+                        return;
                     }
+
+                    const fileJokerBadge = document.querySelector("div.block-container > ol > li span.label--royalBlue");
+
+                    // Prioritize clicking Filejoker badge if it matches the search term
+                    if (fileJokerBadge && searchTerm && isMatchingTitle(fileJokerBadge.parentElement, searchTerm)) {
+                        fileJokerBadge.parentElement.click();
+                        return;
+                    }
+
+                    // Process multiple titles
+                    postTitles.forEach((title) => {
+                        if (searchTerm && !isMatchingTitle(title, searchTerm)) {
+                            title.closest("li").style.display = "none";
+                        } else {
+                            window.open(title.href, "_blank");
+                        }
+                    });
+
+                    setTimeout(() => window.close(), 500);
                 }
 
                 let externalSearchMode = await GM_getValue("externalSearchMode", false);
@@ -1046,23 +1041,41 @@ async function addImprovements() {
             // Click event for the download
             coverPicture?.addEventListener(
                 "click",
-                function () {
-                    const blob = downloadedFiles[newFilename];
-                    if (blob) {
-                        const blobUrl = URL.createObjectURL(blob);
+                async function () {
+                    const maxRetries = 10;
+                    let currentTry = 0;
 
-                        // Create invisible <a> element
-                        const downloadLink = document.createElement("a");
-                        downloadLink.href = blobUrl;
-                        downloadLink.download = newFilename;
+                    async function tryDownload() {
+                        const blob = downloadedFiles[newFilename];
+                        if (blob) {
+                            const blobUrl = URL.createObjectURL(blob);
+                            const downloadLink = document.createElement("a");
+                            downloadLink.href = blobUrl;
+                            downloadLink.download = newFilename;
+                            // Trigger of the click on the invisible <a>
+                            downloadLink.click();
 
-                        // Trigger of the click on the invisible <a>
-                        downloadLink.click();
+                            // Release URL after use
+                            URL.revokeObjectURL(blobUrl);
+                            return true;
+                        }
+                        return false;
+                    }
 
-                        // Release URL after use
-                        URL.revokeObjectURL(blobUrl);
-                    } else {
-                        console.error("Image not cached. Please reload the page.");
+                    while (currentTry < maxRetries) {
+                        const success = await tryDownload();
+                        if (success) {
+                            break;
+                        }
+
+                        currentTry++;
+                        if (currentTry < maxRetries) {
+                            console.log(`Download attempt ${currentTry} failed. Retrying...`);
+                            // Optional: Add delay between retries
+                            await new Promise((resolve) => setTimeout(resolve, 1000));
+                        } else {
+                            console.error("Max retries reached. Image download failed.");
+                        }
                     }
                 },
                 { once: true }
@@ -1094,7 +1107,8 @@ async function addImprovements() {
         );
         addSearchLinkAndOpenAllButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Open-Stream-Group");
-        addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");
+        // addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");
+        addSearchLinkAndOpenAllButton("SEXTB | Stream", "https://sextb.net/search/" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("JAV Most | Stream", "https://www5.javmost.com/search/" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Open-Stream-Group", true);
 
@@ -1115,7 +1129,8 @@ async function addImprovements() {
         // addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
         addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
 
-        addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.com/en/search/" + avid, "Collect-Rapidgator-Links");
+        // https://github.com/MiyukiQAQ/MissAV-Downloader
+        addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.ai/en/search/" + avid, "Collect-Rapidgator-Links");
         addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Collect-Rapidgator-Links");
         addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "Collect-Rapidgator-Links", true);
 

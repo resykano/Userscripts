@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20250208
+// @version        20250209
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -17,6 +17,7 @@
 // @match          *://video-jav.net/*
 // @match          *://www.akiba-online.com/search/*
 // @match          *://bt1207so.top/?find*
+// @match          *://rapidgator.net/*
 // @connect        blogjav.net
 // @connect        javstore.net
 // @connect        pixhost.to
@@ -368,7 +369,7 @@ function externalSearch() {
             "[id^=post]",
             //jav.guru
             "#main div.row",
-            //missjav.com
+            //missav.ai
             "div.my-2.text-sm.text-nord4.truncate",
             //supjav.com
             ".post",
@@ -455,6 +456,7 @@ function externalSearch() {
     async function handleRapidgatorPages() {
         console.log("handleRapidgatorPages");
 
+        // handle hidden rapidgator links
         if (hostname === "jav.guru") {
             // not on redirecting page
             if (!currentURL.includes("/?r=")) {
@@ -483,17 +485,33 @@ function externalSearch() {
                         }
                     }
                 }
+            } else {
+                // copy link from redirecting page and close window
+                const metaTag = document.querySelector('meta[http-equiv="refresh"]');
+
+                if (metaTag) {
+                    const content = metaTag.getAttribute("content");
+                    const urlMatch = content.match(/URL=(.+)/i);
+
+                    if (urlMatch) {
+                        GM_setClipboard(urlMatch[1]);
+                        setTimeout(() => window.close(), 200);
+                    }
+                }
             }
+        } else if (hostname === "supjav.com") {
+            document.querySelectorAll("body > div.main > div > div.video-wrap > div.left > div.downs > div > a").forEach((link) => {
+                if (link.textContent.startsWith("RG")) {
+                    window.open(link.href, "_blank");
+                }
+            });
+            setTimeout(() => window.close(), 200);
         } else {
             const link = document.querySelector("a[href*=rapidgator]");
             if (link) {
-                console.log("handle details pages to get rapidgator links");
-                window.open(link.href, "_self");
-
-                setTimeout(() => {
-                    link.click();
-                    setTimeout(() => window.close(), 1000);
-                }, 100);
+                // copy link to clipboard and close window
+                GM_setClipboard(link.href);
+                setTimeout(() => window.close(), 200);
             } else {
                 window.close();
             }
@@ -763,7 +781,7 @@ async function addImprovements() {
             case /^https?:\/\/maxjav\.com\/.*/i.test(url):
             case /^https?:\/\/jav\.guru\/.*/i.test(url):
             case /^https?:\/\/supjav\.com\/.*/i.test(url):
-            case /^https?:\/\/missav\.com\/.*/i.test(url):
+            case /^https?:\/\/missav\.ai\/.*/i.test(url):
             case /^https?:\/\/video-jav\.net\/.*/i.test(url):
             case /^https?:\/\/javakiba\.org\/.*/i.test(url): {
                 let externalSearchMode = await GM_getValue("externalSearchMode", false);
@@ -790,7 +808,7 @@ async function addImprovements() {
                             GM_setClipboard(location.href);
                             setTimeout(() => {
                                 window.close();
-                            }, 100);
+                            }, 500);
                         }
 
                         copyToClipboardAndClose();
@@ -998,7 +1016,7 @@ async function addImprovements() {
     }
 
     function coverImageDownload() {
-        const downloadedFiles = {}; // Zwischenspeicher für heruntergeladene Dateien
+        const downloadedFiles = {};
 
         // Big preview screen shots
         const screenShots = document.querySelectorAll("#rightcolumn > div.previewthumbs > img");

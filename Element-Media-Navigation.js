@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping a bit against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250201
+// @version        20250216
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -62,7 +62,7 @@ GM_addStyle(`
  * @param {number} timeout - Maximum wait time in milliseconds.
  * @returns {Promise<Element|null>} - Resolves with the element or null if timeout.
  */
-function waitForElement(selector, index = 0, timeout = 5000) {
+function waitForElement(selector, index = 0, timeout) {
     return new Promise((resolve) => {
         const checkElement = () => document.querySelectorAll(selector)[index];
         if (checkElement()) {
@@ -146,7 +146,8 @@ function navigateTo(direction) {
     const nextActiveElement = findSibling(currentElement, siblingType);
 
     if (nextActiveElement) {
-        console.log("nextActiveElement: ", nextActiveElement);
+        // DEBUG
+        // console.log("nextActiveElement: ", nextActiveElement);
         setActiveElement(nextActiveElement);
     }
 
@@ -183,7 +184,7 @@ function setActiveElement(nextActiveElement) {
 function removeActiveElement() {
     const activeElement = document.querySelector(`.${activeElementClass}`); // Find the currently active element
     if (activeElement) {
-        console.error("removeActiveElement");
+        // console.error("removeActiveElement");
         activeElement.classList.remove("active-element"); // Remove the active class
     }
 }
@@ -300,10 +301,10 @@ function replaceContentInLightbox() {
 }
 
 // =======================================================================================
-// Main
+// Event Listeners
 // =======================================================================================
 
-function main() {
+function addEventListeners() {
     document.addEventListener(
         "keydown",
         function (event) {
@@ -316,21 +317,16 @@ function main() {
             }
             // Navigation
             // only if the focus is not on message composer
-            if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-                if (
-                    !document.querySelector(
-                        ".mx_BasicMessageComposer_input.mx_BasicMessageComposer_input_shouldShowPillAvatar.focus-visible"
-                    )
-                ) {
+            const messageComposerInput = document.querySelector(
+                ".mx_BasicMessageComposer_input.mx_BasicMessageComposer_input_shouldShowPillAvatar"
+            );
+            const isNotInMessageComposer = document.activeElement !== messageComposerInput;
+
+            if (isNotInMessageComposer) {
+                if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
                     event.preventDefault();
                     navigateTo("up");
-                }
-            } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
-                if (
-                    !document.querySelector(
-                        ".mx_BasicMessageComposer_input.mx_BasicMessageComposer_input_shouldShowPillAvatar.focus-visible"
-                    )
-                ) {
+                } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
                     event.preventDefault();
                     navigateTo("down");
                 }
@@ -392,6 +388,23 @@ function main() {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
-if (/^element\.[^.]+\.[^.]+$/.test(document.location.host) || /^matrixclient\.[^.]+\.[^.]+$/.test(document.location.host)) {
+// =======================================================================================
+// Main
+// =======================================================================================
+
+function main() {
+    console.log(GM_info.script.name, "started");
+
+    // Add event listeners for navigation
+    addEventListeners();
+}
+
+if (
+    /^element\.[^.]+\.[^.]+$/.test(document.location.host) ||
+    /^matrixclient\.[^.]+\.[^.]+$/.test(document.location.host) ||
+    /^app.schildi.chat/.test(document.location.host) ||
+    /riot.im\/app/.test(document.location.href)
+) {
     main();
 }
+

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping a bit against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250216
+// @version        20250226
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -318,7 +318,7 @@ function addEventListeners() {
             // Navigation
             // only if the focus is not on message composer
             const messageComposerInput = document.querySelector(
-                ".mx_BasicMessageComposer_input.mx_BasicMessageComposer_input_shouldShowPillAvatar"
+                ".mx_BasicMessageComposer_input.mx_BasicMessageComposer_input_shouldShowPillAvatar:not(.mx_BasicMessageComposer_inputEmpty)"
             );
             const isNotInMessageComposer = document.activeElement !== messageComposerInput;
 
@@ -352,15 +352,30 @@ function addEventListeners() {
             waitForElement(".mx_ImageView").then((element) => {
                 // Check if the event listeners are already added
                 if (!element._listenersAdded) {
-                    element.addEventListener("click", (event) => {
-                        const target = event.target;
-                        // Close lightbox if clicking the background
-                        if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper > img")) {
-                            closeImageBox();
-                        }
-                    });
+                    element.addEventListener(
+                        "click",
+                        (event) => {
+                            const target = event.target;
+                            // Close lightbox if clicking the background
+                            if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper > img")) {
+                                closeImageBox();
+                            }
+                        },
+                        true
+                    );
 
                     element.addEventListener("wheel", getWheelDirection, { passive: false });
+                    document.addEventListener(
+                        "keydown",
+                        (event) => {
+                            if (event.key === " ") {
+                                event.preventDefault();
+                                console.log("Space pressed");
+                                navigateTo("down");
+                            }
+                        },
+                        true
+                    );
 
                     // Mark the listener as added
                     element._listenersAdded = true;
@@ -403,8 +418,7 @@ if (
     /^element\.[^.]+\.[^.]+$/.test(document.location.host) ||
     /^matrixclient\.[^.]+\.[^.]+$/.test(document.location.host) ||
     /^app.schildi.chat/.test(document.location.host) ||
-    /riot.im\/app/.test(document.location.href)
+    /app.element.io/.test(document.location.href)
 ) {
     main();
 }
-

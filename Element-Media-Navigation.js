@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
-// @description    Enables navigation through images and videos in timeline (up/down & left/right keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping a bit against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250226
+// @description    Enables navigation through images and videos in timeline (up/down & left/right & a/Space keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping against the jumps on timeline pagination/scrolling issue #8565
+// @version        20250301
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -15,11 +15,14 @@
 "use strict";
 
 // =======================================================================================
-// Config/Requirements
+// Elements
 // =======================================================================================
 
 let messageContainerSelector = "ol.mx_RoomView_MessageList li.mx_EventTile";
-const activeElementClass = "active-element";
+
+function getActiveMedia() {
+    return document.querySelector('[data-active-media="true"]');
+}
 
 // =======================================================================================
 // Layout
@@ -44,7 +47,7 @@ GM_addStyle(`
         display: none;
     }
     
-    .active-element > div.mx_EventTile_line.mx_EventTile_mediaLine.mx_EventTile_image {
+    [data-active-media="true"] > div.mx_EventTile_line.mx_EventTile_mediaLine {
         box-shadow: 0 0 2px 2px #007a62;
         background-color: var(--cpd-color-bg-subtle-secondary);
     }
@@ -134,21 +137,20 @@ function getCurrentElement() {
  * @param {string} direction - "up" or "down".
  */
 function navigateTo(direction) {
-    // const currentElement = document.querySelector(`.${activeClass}`) || getCurrentElement();
     let currentElement;
-    if (document.querySelector(`.${activeElementClass}`)) {
-        currentElement = document.querySelector(`.${activeElementClass}`);
+    if (getActiveMedia()) {
+        currentElement = getActiveMedia();
     } else {
-        console.error("activeElement not found");
+        console.error("activeMedia not found");
         currentElement = getCurrentElement();
     }
     const siblingType = direction === "down" ? "nextElementSibling" : "previousElementSibling";
-    const nextActiveElement = findSibling(currentElement, siblingType);
+    const nextActiveMedia = findSibling(currentElement, siblingType);
 
-    if (nextActiveElement) {
+    if (nextActiveMedia) {
         // DEBUG
-        // console.log("nextActiveElement: ", nextActiveElement);
-        setActiveElement(nextActiveElement);
+        // console.log("nextActiveMedia: ", nextActiveMedia);
+        setActiveMedia(nextActiveMedia);
     }
 
     if (document.querySelector(".mx_Dialog_lightbox")) {
@@ -158,34 +160,32 @@ function navigateTo(direction) {
 
 /**
  * Sets an element as the active one and scrolls it into view.
- * @param {Element} nextActiveElement - DOM element to set active.
+ * @param {Element} nextActiveMedia - DOM element to set active.
  */
-function setActiveElement(nextActiveElement) {
-    if (nextActiveElement) {
-        removeActiveElement();
+function setActiveMedia(nextActiveMedia) {
+    if (nextActiveMedia) {
+        removeActiveMedia();
 
-        nextActiveElement.classList.add(activeElementClass);
-        nextActiveElement.scrollIntoView({
-            block: isLastElement(nextActiveElement) ? "end" : "center",
+        nextActiveMedia.setAttribute("data-active-media", "true");
+        nextActiveMedia.scrollIntoView({
+            block: isLastElement(nextActiveMedia) ? "end" : "center",
             behavior: "auto",
         });
     } else {
-        console.error("setActiveElement: nextActiveElement not found");
+        console.error("setActiveMedia: nextActiveMedia not found");
     }
 }
 
 /**
- * Removes the "active-element" class from the currently active element.
- *
- * This function searches for an element with the class name stored in the
- * variable `activeElementClass` and removes the "active-element" class from it.
+ * Removes the "data-active-media" attribute from the currently active element.
+ * The active element is identified by the presence of the attribute `data-active-media` set to "true".
  * If no such element is found, the function does nothing.
  */
-function removeActiveElement() {
-    const activeElement = document.querySelector(`.${activeElementClass}`); // Find the currently active element
-    if (activeElement) {
-        // console.error("removeActiveElement");
-        activeElement.classList.remove("active-element"); // Remove the active class
+function removeActiveMedia() {
+    const activeMedia = getActiveMedia();
+    if (activeMedia) {
+        // console.error("removeActiveMedia");
+        activeMedia.removeAttribute("data-active-media");
     }
 }
 
@@ -222,7 +222,7 @@ function findSibling(startElement, siblingType) {
 function closeImageBox() {
     const currentElement = getCurrentElement();
     if (currentElement) {
-        setActiveElement(currentElement);
+        setActiveMedia(currentElement);
     }
 
     const closeButton = document.querySelector(".mx_AccessibleButton.mx_ImageView_button.mx_ImageView_button_close");
@@ -262,7 +262,7 @@ function replaceContentInLightbox() {
 
     imageLightboxSelector.setAttribute("controls", "");
 
-    let currentElement = document.querySelector(`.${activeElementClass}`);
+    let currentElement = getActiveMedia();
     if (!currentElement) {
         currentElement = getCurrentElement();
     }
@@ -308,27 +308,44 @@ function addEventListeners() {
     document.addEventListener(
         "keydown",
         function (event) {
-            // if in lightbox
+            // Navigation in lightbox view
             if (document.querySelector(".mx_Dialog_lightbox")) {
                 if (event.key === "Escape") {
                     event.stopPropagation();
                     closeImageBox();
                 }
             }
-            // Navigation
-            // only if the focus is not on message composer
-            const messageComposerInput = document.querySelector(
-                ".mx_BasicMessageComposer_input.mx_BasicMessageComposer_input_shouldShowPillAvatar:not(.mx_BasicMessageComposer_inputEmpty)"
-            );
-            const isNotInMessageComposer = document.activeElement !== messageComposerInput;
 
-            if (isNotInMessageComposer) {
+            // Navigation in timeline view
+            // navigate only if the focus is not on message composer and input is empty
+            const messageComposerInputEmpty = document.querySelector(
+                ".mx_BasicMessageComposer_input:not(.mx_BasicMessageComposer_inputEmpty)"
+            );
+            const isNotInEmptyMessageComposer = document.activeElement !== messageComposerInputEmpty;
+            if (isNotInEmptyMessageComposer) {
                 if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
                     event.preventDefault();
                     navigateTo("up");
+                    document.activeElement.blur(); // remove focus from message composer
                 } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
                     event.preventDefault();
                     navigateTo("down");
+                    document.activeElement.blur(); // remove focus from message composer
+                }
+            }
+
+            // navigate only if the focus is not on message composer
+            const messageComposerInput = document.querySelector(".mx_BasicMessageComposer_input");
+            const isNotInMessageComposer = document.activeElement !== messageComposerInput;
+            if (isNotInMessageComposer) {
+                if (event.key === " ") {
+                    event.preventDefault();
+                    event.stopPropagation(); // prevent focus on message composer
+                    navigateTo("down");
+                } else if (event.key === "a") {
+                    event.preventDefault();
+                    event.stopPropagation(); // prevent focus on message composer
+                    navigateTo("up");
                 }
             }
         },
@@ -345,7 +362,7 @@ function addEventListeners() {
         if (lightbox && !lightboxListenersAdded) {
             // Remove timeline wheel listener when lightbox opens
             if (timelineListenerAdded) {
-                document.removeEventListener("wheel", removeActiveElement, { passive: false });
+                document.removeEventListener("wheel", removeActiveMedia, { passive: false });
                 timelineListenerAdded = false;
             }
 
@@ -365,17 +382,6 @@ function addEventListeners() {
                     );
 
                     element.addEventListener("wheel", getWheelDirection, { passive: false });
-                    document.addEventListener(
-                        "keydown",
-                        (event) => {
-                            if (event.key === " ") {
-                                event.preventDefault();
-                                console.log("Space pressed");
-                                navigateTo("down");
-                            }
-                        },
-                        true
-                    );
 
                     // Mark the listener as added
                     element._listenersAdded = true;
@@ -387,12 +393,12 @@ function addEventListeners() {
                 const src = document.querySelector(".mx_ImageView > .mx_ImageView_image_wrapper > img").src;
                 const img = document.querySelector(`ol.mx_RoomView_MessageList img[src="${src}"]`);
                 const messageContainer = img.closest("li");
-                setActiveElement(messageContainer);
+                setActiveMedia(messageContainer);
             }, true);
             // Timeline view mode
         } else if (!lightbox && !timelineListenerAdded) {
-            // remove ActiveElement in timeline view to allow scrolling
-            document.addEventListener("wheel", removeActiveElement, { passive: false });
+            // remove ActiveMedia in timeline view to allow scrolling
+            document.addEventListener("wheel", removeActiveMedia, { passive: false });
 
             timelineListenerAdded = true;
             lightboxListenersAdded = false; // Reset the lightbox listener flag when lightbox is closed

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right & a/Space keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250301
+// @version        20250302
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -20,8 +20,9 @@
 
 let messageContainerSelector = "ol.mx_RoomView_MessageList li.mx_EventTile";
 
+const activeMediaAttribute = "data-active-media";
 function getActiveMedia() {
-    return document.querySelector('[data-active-media="true"]');
+    return document.querySelector(`[${activeMediaAttribute}="true"]`);
 }
 
 // =======================================================================================
@@ -47,7 +48,7 @@ GM_addStyle(`
         display: none;
     }
     
-    [data-active-media="true"] > div.mx_EventTile_line.mx_EventTile_mediaLine {
+    [${activeMediaAttribute}="true"] > div.mx_EventTile_line.mx_EventTile_mediaLine {
         box-shadow: 0 0 2px 2px #007a62;
         background-color: var(--cpd-color-bg-subtle-secondary);
     }
@@ -166,7 +167,7 @@ function setActiveMedia(nextActiveMedia) {
     if (nextActiveMedia) {
         removeActiveMedia();
 
-        nextActiveMedia.setAttribute("data-active-media", "true");
+        nextActiveMedia.setAttribute(activeMediaAttribute, "true");
         nextActiveMedia.scrollIntoView({
             block: isLastElement(nextActiveMedia) ? "end" : "center",
             behavior: "auto",
@@ -177,7 +178,7 @@ function setActiveMedia(nextActiveMedia) {
 }
 
 /**
- * Removes the "data-active-media" attribute from the currently active element.
+ * Removes the activeMediaAttribute attribute from the currently active element.
  * The active element is identified by the presence of the attribute `data-active-media` set to "true".
  * If no such element is found, the function does nothing.
  */
@@ -185,7 +186,7 @@ function removeActiveMedia() {
     const activeMedia = getActiveMedia();
     if (activeMedia) {
         // console.error("removeActiveMedia");
-        activeMedia.removeAttribute("data-active-media");
+        activeMedia.removeAttribute(activeMediaAttribute);
     }
 }
 
@@ -334,10 +335,8 @@ function addEventListeners() {
                 }
             }
 
-            // navigate only if the focus is not on message composer
-            const messageComposerInput = document.querySelector(".mx_BasicMessageComposer_input");
-            const isNotInMessageComposer = document.activeElement !== messageComposerInput;
-            if (isNotInMessageComposer) {
+            // navigate only if there is an active media element
+            if (getActiveMedia()) {
                 if (event.key === " ") {
                     event.preventDefault();
                     event.stopPropagation(); // prevent focus on message composer

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20250209
+// @version        20250421
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -568,6 +568,9 @@ async function addImprovements() {
                 // increase advertising previews
                 setAdvertisingPhotosToFullSize();
 
+                // Big preview screen shots
+                bigPreviewScreenshots();
+
                 // add Cover Image Download button
                 coverImageDownload();
 
@@ -686,7 +689,7 @@ async function addImprovements() {
                 } else {
                     /**
                      * Filters video elements based on keyword in URL
-                     * Hides videos that don't match the keyword
+                     * Hides videos that don't match the keyword and have "Blu-ray" in the title
                      */
                     const urlParams = new URLSearchParams(window.location.search);
                     const keyword = urlParams.get("keyword")?.toLowerCase();
@@ -696,15 +699,22 @@ async function addImprovements() {
 
                         videoElements.forEach((video) => {
                             const idElement = video.querySelector("a > div.id");
+                            const titleElement = video.querySelector("a");
 
                             if (idElement) {
                                 const idText = idElement.textContent.trim().toLowerCase();
+                                const titleText = titleElement.title.trim().toLowerCase();
 
-                                if (idText !== keyword) {
-                                    video.style.display = "none";
+                                if (idText !== keyword || titleText.includes("blu-ray")) {
+                                    video.remove();
                                 }
                             }
                         });
+                    }
+
+                    // if only one element remains, open it
+                    if (document.querySelectorAll("div.video").length === 1) {
+                        document.querySelector("div.video > a").click();
                     }
 
                     // open found links in same tab
@@ -1015,17 +1025,18 @@ async function addImprovements() {
         return navigator.clipboard.writeText(avid);
     }
 
-    function coverImageDownload() {
-        const downloadedFiles = {};
-
-        // Big preview screen shots
+    function bigPreviewScreenshots() {
         const screenShots = document.querySelectorAll("#rightcolumn > div.previewthumbs > img");
         for (let img of screenShots) {
             let srcBigPictures = img.src.replace(/(.*)(-[0-9].*)$/i, "$1jp$2");
             img.src = srcBigPictures;
         }
+    }
 
-        // Rename cover image
+    function coverImageDownload() {
+        const downloadedFiles = {};
+
+        // build cover image name
         let casts = document.querySelectorAll("[id^=cast] > span.star > a");
         let newFilename = avid + " - ";
         let iteration = casts.length;
@@ -1985,26 +1996,22 @@ function main() {
         } else {
             initializeBeforeRender();
 
-            // // set default configuration
-            // configurationOptions.forEach((option) => {
-            //     // Query default value (if does not exist, 'null' is returned)
-            //     const existingValue = GM_getValue(option, null);
-            //     if (existingValue === null) {
-            //         // Value does not exist, set default value to true
-            //         GM_setValue(option, true);
-            //     }
-            // });
+            const executeFunctions = () => {
+                // console.log("Executing functions...");
+                addImprovements();
+                addVideoThumbnails();
+            };
 
             // Sometimes the EventListener is not executed to prevent this:
             // Check if the DOM is already loaded before adding the event listener
             // If it's still loading, add the event listener for "DOMContentLoaded"
             // If it's already loaded, execute the main function immediately
             if (document.readyState === "loading") {
-                document.addEventListener("DOMContentLoaded", addImprovements, { once: true });
-                document.addEventListener("DOMContentLoaded", addVideoThumbnails, { once: true });
+                // Add event listener if the document is still loading
+                window.addEventListener("load", executeFunctions, { once: true });
             } else {
-                addImprovements();
-                addVideoThumbnails();
+                // Execute immediately if the document is already loaded
+                executeFunctions();
             }
         }
     }

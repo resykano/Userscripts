@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right & a/Space keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250302
+// @version        20250421
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -233,6 +233,7 @@ function closeImageBox() {
     const maxAttempts = 10;
 
     function checkScroll() {
+        // console.log("checkScroll: ", attempts);
         const rect = currentElement.getBoundingClientRect();
         const isInView = rect.top >= 0 && rect.bottom <= window.innerHeight;
 
@@ -242,6 +243,21 @@ function closeImageBox() {
                 behavior: "auto",
             });
             attempts++;
+        } else if (isInView) {
+            // Check a second time after a short delay
+            setTimeout(() => {
+                const rectAfterScroll = currentElement.getBoundingClientRect();
+                const isStillInView = rectAfterScroll.top >= 0 && rectAfterScroll.bottom <= window.innerHeight;
+                if (!isStillInView && attempts < maxAttempts) {
+                    currentElement.scrollIntoView({
+                        block: isLastElement(currentElement) ? "end" : "center",
+                        behavior: "auto",
+                    });
+                    attempts++;
+                } else {
+                    clearInterval(scrollCheckInterval);
+                }
+            }, 200); // Adjust the delay as needed
         } else {
             clearInterval(scrollCheckInterval);
         }
@@ -335,7 +351,7 @@ function addEventListeners() {
                 }
             }
 
-            // navigate only if there is an active media element
+            // navigate only if there is an active media element and remove active media if the key is not a or Space
             if (getActiveMedia()) {
                 if (event.key === " ") {
                     event.preventDefault();
@@ -345,6 +361,8 @@ function addEventListeners() {
                     event.preventDefault();
                     event.stopPropagation(); // prevent focus on message composer
                     navigateTo("up");
+                } else {
+                    removeActiveMedia();
                 }
             }
         },

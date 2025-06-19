@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20250421
+// @version        20250619
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -471,16 +471,22 @@ function externalSearch() {
                 for (let source of rapidgatorSources) {
                     const link = source.querySelector("a");
                     if (link) {
-                        let onClickContent = link.getAttribute("onclick");
-                        if (onClickContent) {
-                            const match = onClickContent.match(/window\.open\s*\(\s*['"]([^'"]*)['"]/);
-                            if (match) {
-                                const url = match[1];
-                                onClickContent = onClickContent.replace(/window\.open\s*\([^)]*\)/, `window.open('${url}', '_self')`);
-                                link.setAttribute("onclick", onClickContent);
-                                link.click();
-                            } else {
-                                window.open(link.href, "_self");
+                        if (link.href) {
+                            window.open(link.href, "_self");
+                        } else {
+                            let onClickContent = link.getAttribute("onclick");
+                            // if onClickContent is set, replace window.open with window.open('url', '_self')
+                            if (onClickContent && onClickContent.includes("window.open")) {
+                                const match = onClickContent.match(/window\.open\s*\(\s*['"]([^'"]*)['"]/);
+                                if (match) {
+                                    const url = match[1];
+                                    onClickContent = onClickContent.replace(
+                                        /window\.open\s*\([^)]*\)/,
+                                        `window.open('${url}', '_self')`
+                                    );
+                                    link.setAttribute("onclick", onClickContent);
+                                    link.click();
+                                }
                             }
                         }
                     }
@@ -1134,7 +1140,7 @@ async function addImprovements() {
             "https://highporn.net/search/videos?search_query=" + avid,
             "Open-Stream-Group"
         );
-        addSearchLinkAndOpenAllButton("JAV BIGO | Stream", "https://javbigo.com/?s=" + avid, "Open-Stream-Group");
+        addSearchLinkAndOpenAllButton("BIGO JAV | Stream", "https://bigojav.com/?s=" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Open-Stream-Group");
         // addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("SEXTB | Stream", "https://sextb.net/search/" + avid, "Open-Stream-Group");
@@ -1177,7 +1183,6 @@ async function addImprovements() {
 
         addSearchLinkAndOpenAllButton("BT1207", "https://bt1207so.top/?find=" + avid, "Torrent");
         addSearchLinkAndOpenAllButton("Sukebei", "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid, "Torrent");
-        addSearchLinkAndOpenAllButton("Bitsearch", "https://bitsearch.to/search?sort=size&q=" + avid, "Torrent");
         addSearchLinkAndOpenAllButton("BTDig", "https://btdig.com/search?order=3&q=" + avid, "Torrent");
         addSearchLinkAndOpenAllButton("BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "Torrent", true);
     }

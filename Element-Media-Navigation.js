@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right & a/Space keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250421
+// @version        20250712
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -31,8 +31,8 @@ function getActiveMedia() {
 
 GM_addStyle(`
     /* Lightbox */
-    img.mx_ImageView_image.mx_ImageView_image_animating,
-    img.mx_ImageView_image.mx_ImageView_image_animatingLoading {
+    .mx_ImageView_image.mx_ImageView_image_animating,
+    .mx_ImageView_image.mx_ImageView_image_animatingLoading {
         transition: transform 0.01s ease;
         transition: none !important;
         transform: unset !important;
@@ -330,11 +330,26 @@ function addEventListeners() {
                 if (event.key === "Escape") {
                     event.stopPropagation();
                     closeImageBox();
+                } else {
+                    // prevent default behavior for all keys except a, Space, ArrowUp, ArrowLeft, ArrowRight
+                    // to not writing in message composer
+                    if (
+                        event.key !== "a" ||
+                        event.key !== " " ||
+                        event.key !== "ArrowUp" ||
+                        event.key !== "ArrowLeft" ||
+                        event.key !== "ArrowRight" ||
+                        event.key !== "ArrowLeft"
+                    ) {
+                        event.preventDefault();
+                        event.stopPropagation(); // prevent focus on message composer
+                    }
                 }
             }
 
             // Navigation in timeline view
-            // navigate only if the focus is not on message composer and input is empty
+            // navigate only if the focus is not on message composer, input is empty and no dialog is open
+            if (document.querySelector("#mx_BaseDialog_title")) return;
             const messageComposerInputEmpty = document.querySelector(
                 ".mx_BasicMessageComposer_input:not(.mx_BasicMessageComposer_inputEmpty)"
             );
@@ -351,7 +366,7 @@ function addEventListeners() {
                 }
             }
 
-            // navigate only if there is an active media element and remove active media if the key is not a or Space
+            // navigate only with this keys if there is an active media element and remove active media if the key is not a or Space to allow writing again
             if (getActiveMedia()) {
                 if (event.key === " ") {
                     event.preventDefault();
@@ -362,7 +377,9 @@ function addEventListeners() {
                     event.stopPropagation(); // prevent focus on message composer
                     navigateTo("up");
                 } else {
-                    removeActiveMedia();
+                    if (!document.querySelector(".mx_Dialog_lightbox")) {
+                        removeActiveMedia();
+                    }
                 }
             }
         },

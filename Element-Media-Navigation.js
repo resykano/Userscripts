@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right & a/Space keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250712
+// @version        20250716
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -99,7 +99,7 @@ function getWheelDirection(event) {
     event.stopPropagation();
 
     const direction = event.deltaY < 0 ? "up" : "down";
-    navigateTo(direction);
+    navigate(direction);
 }
 
 /**
@@ -137,7 +137,7 @@ function getCurrentElement() {
  * Navigates to the next or previous element and sets it as active.
  * @param {string} direction - "up" or "down".
  */
-function navigateTo(direction) {
+function navigate(direction) {
     let currentElement;
     if (getActiveMedia()) {
         currentElement = getActiveMedia();
@@ -220,12 +220,13 @@ function findSibling(startElement, siblingType) {
 /**
  * Closes the image lightbox and scrolls the active element into view.
  */
-function closeImageBox() {
+function closeLightbox() {
     const currentElement = getCurrentElement();
     if (currentElement) {
         setActiveMedia(currentElement);
     }
 
+    // Close the lightbox by clicking the close button
     const closeButton = document.querySelector(".mx_AccessibleButton.mx_ImageView_button.mx_ImageView_button_close");
     if (closeButton) closeButton.click();
 
@@ -233,7 +234,7 @@ function closeImageBox() {
     const maxAttempts = 10;
 
     function checkScroll() {
-        // console.log("checkScroll: ", attempts);
+        console.log("checkScroll: ", attempts);
         const rect = currentElement.getBoundingClientRect();
         const isInView = rect.top >= 0 && rect.bottom <= window.innerHeight;
 
@@ -249,12 +250,14 @@ function closeImageBox() {
                 const rectAfterScroll = currentElement.getBoundingClientRect();
                 const isStillInView = rectAfterScroll.top >= 0 && rectAfterScroll.bottom <= window.innerHeight;
                 if (!isStillInView && attempts < maxAttempts) {
+                    console.log("checkScroll second attempt: ", attempts);
                     currentElement.scrollIntoView({
                         block: isLastElement(currentElement) ? "end" : "center",
                         behavior: "auto",
                     });
                     attempts++;
                 } else {
+                    console.log("checkScroll completed after attempts: ", attempts);
                     clearInterval(scrollCheckInterval);
                 }
             }, 200); // Adjust the delay as needed
@@ -304,15 +307,37 @@ function replaceContentInLightbox() {
         imageLightboxSelector.src = imageSource;
 
         // Switch between <img> and <video> tags based on the new media element
-        if (currentElement.querySelector("video") && imageLightboxSelector?.tagName === "IMG") {
-            imageLightboxSelector.parentElement.innerHTML = imageLightboxSelector.parentElement.innerHTML.replace(/^<img/, "<video");
+        const hasVideo = currentElement.querySelector("video");
+        const hasImg = currentElement.querySelector("img");
+        if (hasVideo && imageLightboxSelector?.tagName === "IMG") {
+            console.log("Switching to video in lightbox");
+            // Save parent before replacing innerHTML
+            const parent = imageLightboxSelector.parentElement;
+            parent.innerHTML = parent.innerHTML.replace(/^<img/, "<video");
 
             setTimeout(() => {
-                imageLightboxSelector.setAttribute("controls", "");
+                // After replacing innerHTML, the old imageLightboxSelector is invalid!
+                const newVideo = parent.querySelector("video");
+                if (newVideo) {
+                    newVideo.setAttribute("controls", "");
+                    newVideo.autoplay = true; // Automatically play the video
+                    newVideo.play();
+                }
             }, 300);
+            return; // Prevent further code from using the old selector
         }
-        if (currentElement.querySelector("img") && imageLightboxSelector?.tagName === "VIDEO") {
-            imageLightboxSelector.parentElement.innerHTML = imageLightboxSelector.parentElement.innerHTML.replace(/^<video/, "<img");
+        // Only switch to <img> if the current element contains an image and NOT a video!
+        if (hasImg && !hasVideo && imageLightboxSelector?.tagName === "VIDEO") {
+            console.log("Switching to image in lightbox");
+            const parent = imageLightboxSelector.parentElement;
+            parent.innerHTML = parent.innerHTML.replace(/^<video/, "<img");
+            return;
+        }
+        // If the current lightbox element is a video, play automatically
+        if (imageLightboxSelector?.tagName === "VIDEO") {
+            imageLightboxSelector.setAttribute("controls", "");
+            imageLightboxSelector.autoplay = true;
+            imageLightboxSelector.play();
         }
     }
 }
@@ -329,7 +354,7 @@ function addEventListeners() {
             if (document.querySelector(".mx_Dialog_lightbox")) {
                 if (event.key === "Escape") {
                     event.stopPropagation();
-                    closeImageBox();
+                    closeLightbox();
                 } else {
                     // prevent default behavior for all keys except a, Space, ArrowUp, ArrowLeft, ArrowRight
                     // to not writing in message composer
@@ -357,11 +382,11 @@ function addEventListeners() {
             if (isNotInEmptyMessageComposer) {
                 if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
                     event.preventDefault();
-                    navigateTo("up");
+                    navigate("up");
                     document.activeElement.blur(); // remove focus from message composer
                 } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
                     event.preventDefault();
-                    navigateTo("down");
+                    navigate("down");
                     document.activeElement.blur(); // remove focus from message composer
                 }
             }
@@ -371,15 +396,11 @@ function addEventListeners() {
                 if (event.key === " ") {
                     event.preventDefault();
                     event.stopPropagation(); // prevent focus on message composer
-                    navigateTo("down");
+                    navigate("down");
                 } else if (event.key === "a") {
                     event.preventDefault();
                     event.stopPropagation(); // prevent focus on message composer
-                    navigateTo("up");
-                } else {
-                    if (!document.querySelector(".mx_Dialog_lightbox")) {
-                        removeActiveMedia();
-                    }
+                    navigate("up");
                 }
             }
         },
@@ -409,7 +430,8 @@ function addEventListeners() {
                             const target = event.target;
                             // Close lightbox if clicking the background
                             if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper > img")) {
-                                closeImageBox();
+                                console.log("Lightbox clicked, closing...");
+                                closeLightbox();
                             }
                         },
                         true
@@ -424,13 +446,25 @@ function addEventListeners() {
                 lightboxListenersAdded = true;
 
                 // set first opened image in lightbox as active element in timeline view
-                const src = document.querySelector(".mx_ImageView > .mx_ImageView_image_wrapper > img").src;
-                const img = document.querySelector(`ol.mx_RoomView_MessageList img[src="${src}"]`);
-                const messageContainer = img.closest("li");
-                setActiveMedia(messageContainer);
+                const src = document.querySelector(".mx_ImageView > .mx_ImageView_image_wrapper > img")?.src;
+                if (src) {
+                    const img = document.querySelector(`ol.mx_RoomView_MessageList img[src="${src}"]`);
+                    if (img) {
+                        const messageContainer = img.closest("li");
+                        setActiveMedia(messageContainer);
+                    }
+                }
             }, true);
-            // Timeline view mode
         } else if (!lightbox && !timelineListenerAdded) {
+            // Workaround: When the lightbox is closed, scroll to the active element as click event does not work after a video
+            const activeMedia = getActiveMedia();
+            if (activeMedia) {
+                activeMedia.scrollIntoView({
+                    block: isLastElement(activeMedia) ? "end" : "center",
+                    behavior: "auto",
+                });
+            }
+
             // remove ActiveMedia in timeline view to allow scrolling
             document.addEventListener("wheel", removeActiveMedia, { passive: false });
 

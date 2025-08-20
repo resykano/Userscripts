@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20250619
+// @version        20250820
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -971,18 +971,21 @@ async function addImprovements() {
         if (textElement && !avidCopiedToClipboard && document.hasFocus()) {
             // if tab was opened with link
             if (history.length === 1) {
-                // put once to clipboard
-                // console.log(`${source}: ${avid}`);
+                // not on image or best of videos
+                if (!document.querySelector("#genre199") && !document.querySelector("#genre39")) {
+                    // put once to clipboard
+                    // console.log(`${source}: ${avid}`);
 
-                copyTitleToClipboard(avid)
-                    .then(() => {
-                        avidCopiedToClipboard = true;
-                        runLocalSearch();
-                    })
-                    .catch(function (err) {
-                        console.error("Failed to copy text: ", err);
-                        avidCopiedToClipboard = false;
-                    });
+                    copyTitleToClipboard(avid)
+                        .then(() => {
+                            avidCopiedToClipboard = true;
+                            runLocalSearch();
+                        })
+                        .catch(function (err) {
+                            console.error("Failed to copy text: ", err);
+                            avidCopiedToClipboard = false;
+                        });
+                }
             }
         }
     }
@@ -1018,13 +1021,10 @@ async function addImprovements() {
     }
 
     function runLocalSearch() {
-        // not on image videos
-        if (!document.querySelector("#genre199")) {
-            document.title = "Browser Local-Search";
-            setTimeout(() => {
-                document.title = originalDocumentTitle;
-            }, 50);
-        }
+        document.title = "Browser Local-Search";
+        setTimeout(() => {
+            document.title = originalDocumentTitle;
+        }, 50);
     }
 
     function copyTitleToClipboard() {
@@ -1347,15 +1347,15 @@ async function addImprovements() {
                 imageSearchDiv.appendChild(a);
             }
 
-            addButton("XsList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
-            addButton("Yandex", "https://yandex.com/images/search?text=");
+            addButton("Minnano", "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word=");
             addButton("AVDBS", "https://www.avdbs.com/menu/search.php?seq=42978591&tab=1&kwd=");
             addButton("V2PH", "https://www.v2ph.com/search/?q=");
-            addButton("JJGirls", "https://jjgirls.com/match.php?model=");
             addButton("KawaiiThong", "https://kawaiithong.com/search_kawaii_pics/");
+            addButton("JJGirls", "https://jjgirls.com/match.php?model=");
+            addButton("Yandex", "https://yandex.com/images/search?text=");
+            addButton("XsList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
             // addButton("BeautiMetas", "https://en.beautifulmetas.com/search_result/");
             // https://en.girlgirlgo.net
-            addButton("Minnano", "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word=");
         });
     }
 
@@ -1527,7 +1527,7 @@ async function addVideoThumbnails() {
 
                 if (targetImageUrl === null) {
                     contentElement = document.createElement("p");
-                    contentElement.innerText = "No Video Thumbnails found";
+                    contentElement.innerText = 'No Video Thumbnails found\nPlease try "Search Thumbnails 1"';
                 } else {
                     contentElement = document.createElement("img");
                     contentElement.src = targetImageUrl;

@@ -228,6 +228,14 @@ function addImprovementsCss() {
                     user-select = none;
                 }
 
+                /* advertising photos */
+                #rightcolumn > div.previewthumbs {
+                    display: flex !important;
+                    flex-wrap: wrap;
+                    gap: 5px;
+                    justify-content: center;
+                    align-items: center;
+                }
                 /* preview video separated from advertising photos */
                 a.btn_videoplayer {
                     display: block;
@@ -575,7 +583,7 @@ async function addImprovements() {
                 setAdvertisingPhotosToFullSize();
 
                 // Big preview screen shots
-                bigPreviewScreenshots();
+                // bigPreviewScreenshots();
 
                 // add Cover Image Download button
                 coverImageDownload();

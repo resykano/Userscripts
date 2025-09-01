@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20250902
+// @version        20250902b
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -30,6 +30,7 @@
 // @grant          GM_setClipboard
 // @grant          GM_getValue
 // @grant          GM_setValue
+// @grant          GM_deleteValue
 // @grant          GM_addStyle
 // @grant          GM_openInTab
 // @grant          window.close

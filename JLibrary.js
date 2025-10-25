@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20250902b
+// @version        20251025
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -14,6 +14,7 @@
 // @match          *://jav.guru/*
 // @match          *://supjav.com/*
 // @match          *://missav.ai/*
+// @match          *://maddawgjav.net/*
 // @match          *://video-jav.net/*
 // @match          *://www.akiba-online.com/search/*
 // @match          *://bt1207so.top/?find*
@@ -62,7 +63,15 @@ function getTitleElement() {
 function getAvid() {
     if (!avid) {
         avid = getTitleElement()?.textContent;
+
+        // in VR titles, JAVLibrary adds an additional leading zero after hyphen
+        // remove these if there are five digits after the hyphen to get correct titles
+        // e.g. XYZ-05678 -> XYZ-5678
+        if (document.querySelector("span#genre558") && avid && /-\d{5}/.test(avid)) {
+            avid = avid.replace(/-(0+)/, "-");
+        }
     }
+    // return avid;
 }
 function castContainer() {
     return document.querySelector("#video_cast");
@@ -374,7 +383,7 @@ function externalSearch() {
     const hostname = window.location.hostname;
 
     function handleSearchResults() {
-        const selectors = [
+        const postElementSelectors = [
             //default
             "[id^=post]",
             //jav.guru
@@ -387,12 +396,12 @@ function externalSearch() {
 
         let posts = [];
 
-        for (let selector of selectors) {
+        for (let selector of postElementSelectors) {
             posts = document.querySelectorAll(selector);
             if (posts.length > 0) break;
         }
 
-        if (posts[0]?.textContent.includes("404") || posts.length === 0) {
+        if (posts[0]?.textContent.includes("Error 404") || posts.length === 0) {
             if (document.title !== "Just a moment...") {
                 window.close();
             }
@@ -431,34 +440,6 @@ function externalSearch() {
                 setTimeout(() => window.close(), 1000);
             } else {
                 console.log("window.open blocked");
-            }
-        }
-    }
-
-    function handleGoogleDrivePages() {
-        const links = document.querySelectorAll("[id^=post] a");
-        let isFirstIteration = true;
-
-        links.forEach((link) => {
-            if (
-                link.textContent.includes("FHD") ||
-                link.textContent.includes("GOOGLE DRIVE – ALL IN ONE") ||
-                link.textContent.includes("GB") ||
-                link.textContent.includes("1080")
-            ) {
-                if (isFirstIteration) {
-                    isFirstIteration = false;
-                    link.scrollIntoView({ block: "center" });
-                }
-            }
-        });
-
-        if (hostname === "javgg.me") {
-            const postContentElement = document.querySelector("article.status-publish.hentry > div > p");
-            if (postContentElement && postContentElement.textContent.includes("drive.google.com/file/")) {
-                GM_setClipboard(postContentElement.textContent)
-                    .then(() => window.close())
-                    .catch((err) => console.error("Error copying content:", err));
             }
         }
     }
@@ -523,13 +504,46 @@ function externalSearch() {
             });
             setTimeout(() => window.close(), 200);
         } else {
-            const link = document.querySelector("a[href*=rapidgator]");
-            if (link) {
-                // copy link to clipboard and close window
-                GM_setClipboard(link.href);
-                setTimeout(() => window.close(), 200);
+            const rapidgatorLinks = document.querySelectorAll("a[href*=rapidgator]");
+            if (rapidgatorLinks.length > 0) {
+                let collectedLinks = "";
+
+                rapidgatorLinks.forEach((link) => {
+                    collectedLinks += link.href + "\n";
+                });
+
+                GM_setClipboard(collectedLinks);
+                window.close();
             } else {
                 window.close();
+            }
+        }
+    }
+
+    function handleGoogleDrivePages() {
+        const links = document.querySelectorAll("[id^=post] a");
+        let isFirstIteration = true;
+
+        links.forEach((link) => {
+            if (
+                link.textContent.includes("FHD") ||
+                link.textContent.includes("GOOGLE DRIVE – ALL IN ONE") ||
+                link.textContent.includes("GB") ||
+                link.textContent.includes("1080")
+            ) {
+                if (isFirstIteration) {
+                    isFirstIteration = false;
+                    link.scrollIntoView({ block: "center" });
+                }
+            }
+        });
+
+        if (hostname === "javgg.me") {
+            const postContentElement = document.querySelector("article.status-publish.hentry > div > p");
+            if (postContentElement && postContentElement.textContent.includes("drive.google.com/file/")) {
+                GM_setClipboard(postContentElement.textContent)
+                    .then(() => window.close())
+                    .catch((err) => console.error("Error copying content:", err));
             }
         }
     }
@@ -542,7 +556,7 @@ function externalSearch() {
             case ["arcjav.com", "javgg.me", "javx357.com"].includes(hostname):
                 handleGoogleDrivePages();
                 break;
-            case ["jav.guru", "supjav.com", "missav.ai"].includes(hostname):
+            case ["jav.guru", "supjav.com", "missav.ai", "maddawgjav.net"].includes(hostname):
                 handleRapidgatorPages();
                 break;
         }
@@ -685,9 +699,6 @@ async function addImprovements() {
             // Search Page
             case /\/search.php/.test(url): {
                 console.log("Advanced Search Section");
-
-                // open Combination Search
-                // document.querySelector("#ui-accordion-accordion-header-1 > span")?.click();
                 break;
             }
             case /\/vl_searchbyid.php/.test(url): {
@@ -808,6 +819,7 @@ async function addImprovements() {
             case /^https?:\/\/jav\.guru\/.*/i.test(url):
             case /^https?:\/\/supjav\.com\/.*/i.test(url):
             case /^https?:\/\/missav\.ai\/.*/i.test(url):
+            case /^https?:\/\/maddawgjav\.net\/.*/i.test(url):
             case /^https?:\/\/video-jav\.net\/.*/i.test(url):
             case /^https?:\/\/javakiba\.org\/.*/i.test(url): {
                 let externalSearchMode = await GM_getValue("externalSearchMode", false);
@@ -1054,7 +1066,15 @@ async function addImprovements() {
 
         // build cover image name
         let casts = document.querySelectorAll("[id^=cast] > span.star > a");
-        let newFilename = avid + " - ";
+        let newFilename;
+        // in VR titles, JAVLibrary adds an additional leading zero after hyphen
+        // remove these if there are five digits after the hyphen to get correct titles
+        // e.g. XYZ-05678 -> XYZ-5678
+        if (document.querySelector("span#genre558") && avid && /-\d{5}/.test(avid)) {
+            newFilename = avid.replace(/-(0+)/, "-") + " " + avid + " - ";
+        } else {
+            newFilename = avid + " - ";
+        }
         let iteration = casts.length;
         for (let cast of casts) {
             const replaced = cast.textContent.replace(/[^\x00-\x7F]/g, "");
@@ -1174,7 +1194,8 @@ async function addImprovements() {
         // addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
         addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
 
-        // https://github.com/MiyukiQAQ/MissAV-Downloader
+        // to add more Rapidgator sources, add in general Userscript match, in handleSearchResults(), runSearch() and under comment "batch external download link and preview searches"
+        addSearchLinkAndOpenAllButton("Maddawg JAV | RG", "https://maddawgjav.net/?s=" + avid, "Collect-Rapidgator-Links");
         addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.ai/en/search/" + avid, "Collect-Rapidgator-Links");
         addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Collect-Rapidgator-Links");
         addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "Collect-Rapidgator-Links", true);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20251025
+// @version        20251026
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1053,14 +1053,6 @@ async function addImprovements() {
         return navigator.clipboard.writeText(avid);
     }
 
-    function bigPreviewScreenshots() {
-        const screenShots = document.querySelectorAll("#rightcolumn > div.previewthumbs > img");
-        for (let img of screenShots) {
-            let srcBigPictures = img.src.replace(/(.*)(-[0-9].*)$/i, "$1jp$2");
-            img.src = srcBigPictures;
-        }
-    }
-
     function coverImageDownload() {
         const downloadedFiles = {};
 
@@ -1204,7 +1196,7 @@ async function addImprovements() {
         addSearchLinkAndOpenAllButton("JAVAkiba | Thumbnails", "https://javakiba.org/?s=" + avid, "Search-Thumbnails-2");
         addSearchLinkAndOpenAllButton("Video-JAV | Thumbnails", "http://video-jav.net/?s=" + avid, "Search-Thumbnails-2", true);
 
-        addSearchLinkAndOpenAllButton("JAV Max Quality | Thumbnails", "https://maxjav.com/?s=" + avid, "Search-Thumbnails-1");
+        addSearchLinkAndOpenAllButton("Max JAV | Thumbnails", "https://maxjav.com/?s=" + avid, "Search-Thumbnails-1");
         addSearchLinkAndOpenAllButton(
             "Akiba-Online | Thumbnails",
             "https://www.akiba-online.com/search/?q=" + avid + "&c%5Btitle_only%5D=1&o=date&search=" + avid,
@@ -1499,7 +1491,10 @@ async function addImprovements() {
                 img.src = anchor.href;
                 img.removeAttribute("width");
                 img.removeAttribute("height");
-                anchor.href;
+
+                // Move image element one level and delete anchor
+                anchor.parentNode.insertBefore(img, anchor);
+                anchor.remove();
             }
         });
     }

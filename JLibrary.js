@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
-// @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey <), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20251026
+// @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
+// @version        20251107
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -27,7 +27,6 @@
 // @connect        *
 // @grant          GM_registerMenuCommand
 // @grant          GM_xmlhttpRequest
-// @grant          GM_download
 // @grant          GM_setClipboard
 // @grant          GM_getValue
 // @grant          GM_setValue
@@ -663,7 +662,7 @@ async function addImprovements() {
                 }
 
                 window.addEventListener("keydown", function (event) {
-                    if (event.key === "<") {
+                    if (event.key === "<" || event.key === "\\") {
                         collectingLinksFromCommentsAndRgGroup();
                     }
                 });
@@ -1143,12 +1142,12 @@ async function addImprovements() {
     function setSearchLinks() {
         // add search links and buttons
         addSearchLinkAndOpenAllButton(
-            "DuckDuckGo Screens",
+            "DuckDuckGo | Video Image Search",
             "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
             ""
         );
         addSearchLinkAndOpenAllButton(
-            "DuckDuckGo",
+            "DuckDuckGo | Video Web Search",
             "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + '"' + avid + '"' + " JAV",
             "",
             true
@@ -1167,6 +1166,7 @@ async function addImprovements() {
         // addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("SEXTB | Stream", "https://sextb.net/search/" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("JAV Most | Stream", "https://www5.javmost.com/search/" + avid, "Open-Stream-Group");
+        addSearchLinkAndOpenAllButton("TwoJAV | Stream", "https://www.twojav.com/en/search?q=" + avid, "Open-Stream-Group");
         addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Open-Stream-Group", true);
 
         addSearchLinkAndOpenAllButton("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + avid, "Open-GDrive-Group");

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20251107
+// @version        20251116
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -695,9 +695,10 @@ async function addImprovements() {
 
                 break;
             }
-            // Search Page
+            // Advanced Search Page
             case /\/search.php/.test(url): {
-                console.log("Advanced Search Section");
+                // initialize search wait timer
+                displaySearchWaitTimer();
                 break;
             }
             case /\/vl_searchbyid.php/.test(url): {
@@ -1170,7 +1171,8 @@ async function addImprovements() {
         addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Open-Stream-Group", true);
 
         addSearchLinkAndOpenAllButton("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + avid, "Open-GDrive-Group");
-        addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "Open-GDrive-Group");
+        // seems offline
+        // addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "Open-GDrive-Group");
         addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "Open-GDrive-Group", true);
 
         addSearchLinkAndOpenAllButton(
@@ -1186,7 +1188,7 @@ async function addImprovements() {
         // addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
         addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
 
-        // to add more Rapidgator sources, add in general Userscript match, in handleSearchResults(), runSearch() and under comment "batch external download link and preview searches"
+        // to add/remove Rapidgator sources, check in general Userscript match, in handleSearchResults(), runSearch() and under comment "batch external download link and preview searches"
         addSearchLinkAndOpenAllButton("Maddawg JAV | RG", "https://maddawgjav.net/?s=" + avid, "Collect-Rapidgator-Links");
         addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.ai/en/search/" + avid, "Collect-Rapidgator-Links");
         addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Collect-Rapidgator-Links");
@@ -1497,6 +1499,98 @@ async function addImprovements() {
                 anchor.remove();
             }
         });
+    }
+
+    function displaySearchWaitTimer() {
+        let countdownInterval = null;
+        let remainingSeconds = 0;
+        let infoBox = null;
+
+        (function createInfoBox() {
+            infoBox = document.createElement("div");
+            infoBox.id = "custom-countdown-box";
+            infoBox.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #f44336;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 10000;
+            display: none;
+            min-width: 200px;
+        `;
+            document.body.appendChild(infoBox);
+        })();
+
+        (function setupObserver() {
+            let isProcessing = false;
+            let lastProcessedText = "";
+
+            const observer = new MutationObserver(() => {
+                if (isProcessing) return;
+
+                const notificationElement = document.querySelector("body > div.noty_bar.center.alert.default > div > div.noty_text");
+
+                if (notificationElement) {
+                    const text = notificationElement.textContent || notificationElement.innerText;
+
+                    // Prevent processing the same notification multiple times
+                    if (text === lastProcessedText) return;
+
+                    isProcessing = true;
+                    lastProcessedText = text;
+
+                    const match = text.match(/(\d+)\s*seconds/i);
+                    const seconds = match ? parseInt(match[1], 10) : null;
+
+                    if (seconds !== null) {
+                        remainingSeconds = seconds;
+
+                        if (countdownInterval) clearInterval(countdownInterval);
+
+                        // Update display immediately
+                        if (remainingSeconds > 0) {
+                            infoBox.textContent = `Wait ${remainingSeconds} seconds before next search`;
+                            infoBox.style.display = "block";
+                            remainingSeconds--;
+                        }
+
+                        // Start countdown interval
+                        countdownInterval = setInterval(() => {
+                            if (remainingSeconds > 0) {
+                                infoBox.textContent = `Wait ${remainingSeconds} seconds before next search`;
+                                infoBox.style.display = "block";
+                                remainingSeconds--;
+                            } else {
+                                infoBox.style.display = "none";
+                                clearInterval(countdownInterval);
+                                countdownInterval = null;
+                            }
+                        }, 1000);
+                    }
+
+                    // Reset processing flag after a short delay
+                    setTimeout(() => {
+                        isProcessing = false;
+                    }, 100);
+                } else {
+                    // Reset when notification disappears
+                    lastProcessedText = "";
+                }
+            });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+            });
+
+            console.log("Search countdown observer initialized");
+        })();
     }
 }
 

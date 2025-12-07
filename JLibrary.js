@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20251128
+// @version        20251207
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -254,6 +254,7 @@ function addImprovementsCss() {
 
                 #video_jacket {
                     text-align: left !important;
+                    max-width: fit-content;
                 }
                 /* prevent video metadata from becoming too narrow */
                 #video_jacket_info > tbody > tr > td:nth-child(2) {
@@ -618,6 +619,9 @@ async function addImprovements() {
 
                 // adds own svg to make favorite cast visible
                 makeFavoriteCastVisible();
+
+                // move watch status below cover image
+                moveWatchStatus();
 
                 // remove redirects for external links
                 setTimeout(() => {
@@ -1499,6 +1503,26 @@ async function addImprovements() {
                 anchor.remove();
             }
         });
+    }
+
+    function moveWatchStatus() {
+        GM_addStyle(`
+            #video_favorite_edit {
+                text-align: center;
+                margin-top: 2px;
+            }
+        `);
+
+        const videoWatchStatus = document.querySelector("#video_favorite_edit");
+        const videoCover = document.querySelector("#video_jacket");
+
+        if (!videoWatchStatus || !videoCover) {
+            console.error("One or both elements not found");
+            return;
+        }
+
+        // Insert videoWatchStatus directly after videoCover
+        videoCover.appendChild(videoWatchStatus);
     }
 
     function displaySearchWaitTimer() {

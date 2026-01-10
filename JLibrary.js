@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
-// @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in Tampermonkeys extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20251207
+// @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
+// @version        20260110
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -50,11 +50,28 @@ let avidCopiedToClipboard = false;
 const url = window.location.href;
 const originalDocumentTitle = document.title;
 let avid = null;
-// allowed execution time of Collect Rapidgator Link & Thumbnails Search
-const externalSearchModeTimeout = 8000;
-// fetching of data from other websites
-const externalSearchTimeout = 5000;
-const configurationOptions = ["Improvements", "Video-Thumbnails"];
+const configurationOptions = {
+    improvements: {
+        label: "Layout and functional improvements",
+        default: true,
+    },
+    searchByIDFilter: {
+        label: "Filter Blu-ray editions and mismatched AVIDs from search results (only if improvements are enabled)",
+        default: true,
+    },
+    videoThumbnails: {
+        label: "Display video preview images",
+        default: true,
+    },
+    externalSearchModeTimeout: {
+        label: "Allowed execution time of Collect Rapidgator Link & Thumbnails Search (Milliseconds)",
+        default: 8000,
+    },
+    externalDataFetchTimeout: {
+        label: "Timeout when retrieving data from other websites, mainly for video thumbnails (Milliseconds)",
+        default: 5000,
+    },
+};
 
 function getTitleElement() {
     return document.querySelector("#video_id > table > tbody > tr > td.text");
@@ -572,7 +589,7 @@ function externalSearch() {
 
 async function addImprovements() {
     (async function () {
-        const configured = await GM_getValue("Improvements", true);
+        const configured = await GM_getValue("improvements", configurationOptions.improvements.default);
         if (!configured) return;
 
         getAvid();
@@ -612,7 +629,7 @@ async function addImprovements() {
                 addCastImagesSearchButtons();
 
                 // button for facial recognition
-                addFaceRecognitionSearchButton();
+                addCastSearchButton();
 
                 // executes collecting all links from comments and opens rapidgator group
                 collectingLinksFromCommentsAndRgGroupButton();
@@ -630,12 +647,13 @@ async function addImprovements() {
 
                 // TODO: needs a more solid solution than just a blind timeout
                 // maybe possible with GM_openInTab
-                let externalSearchMode = await GM_getValue("externalSearchMode", false);
+                const externalSearchMode = await GM_getValue("externalSearchMode", false);
+                const timeout = await GM_getValue("externalSearchModeTimeout", configurationOptions.externalSearchModeTimeout.default);
                 if (externalSearchMode) {
                     setTimeout(async () => {
                         GM_setValue("externalSearchMode", false);
                         console.log("externalSearchMode off");
-                    }, externalSearchModeTimeout);
+                    }, timeout);
                 }
 
                 // autorun local search
@@ -707,7 +725,7 @@ async function addImprovements() {
                 break;
             }
             case /\/vl_searchbyid.php/.test(url): {
-                // if video is not in JAVLibrary
+                // if video is not in JAVLibrary add search links else filter results
                 if (
                     (document.querySelector("#rightcolumn > p > em") || document.querySelector("#badalert")) &&
                     document.querySelector("#rightcolumn > div.titlebox")
@@ -719,40 +737,47 @@ async function addImprovements() {
                         setSearchLinks();
                     }
                 } else {
-                    /**
-                     * Filters video elements based on keyword in URL
-                     * Hides videos that don't match the keyword and have "Blu-ray" in the title
-                     */
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const keyword = urlParams.get("keyword")?.toLowerCase();
+                    const searchByIDFilterEnabled = await GM_getValue(
+                        "searchByIDFilter",
+                        configurationOptions.searchByIDFilter.default
+                    );
 
-                    if (window.location.href.includes("vl_searchbyid.php?keyword=") && keyword) {
-                        const videoElements = document.querySelectorAll("div.video");
+                    if (searchByIDFilterEnabled) {
+                        /**
+                         * Filters video elements based on keyword in URL
+                         * Hides videos that don't match the keyword and have "Blu-ray" in the title
+                         */
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const keyword = urlParams.get("keyword")?.toLowerCase();
 
-                        videoElements.forEach((video) => {
-                            const idElement = video.querySelector("a > div.id");
-                            const titleElement = video.querySelector("a");
+                        if (window.location.href.includes("vl_searchbyid.php?keyword=") && keyword) {
+                            const videoElements = document.querySelectorAll("div.video");
 
-                            if (idElement) {
-                                const idText = idElement.textContent.trim().toLowerCase();
-                                const titleText = titleElement.title.trim().toLowerCase();
+                            videoElements.forEach((video) => {
+                                const idElement = video.querySelector("a > div.id");
+                                const titleElement = video.querySelector("a");
 
-                                if (idText !== keyword || titleText.includes("blu-ray")) {
-                                    video.remove();
+                                if (idElement) {
+                                    const idText = idElement.textContent.trim().toLowerCase();
+                                    const titleText = titleElement.title.trim().toLowerCase();
+
+                                    if (idText !== keyword || titleText.includes("blu-ray")) {
+                                        video.remove();
+                                    }
                                 }
-                            }
+                            });
+                        }
+
+                        // if only one element remains, open it
+                        if (document.querySelectorAll("div.video").length === 1) {
+                            document.querySelector("div.video > a").click();
+                        }
+
+                        // open found links in same tab
+                        document.querySelectorAll(".video > a")?.forEach(function (element) {
+                            element.removeAttribute("target");
                         });
                     }
-
-                    // if only one element remains, open it
-                    if (document.querySelectorAll("div.video").length === 1) {
-                        document.querySelector("div.video > a").click();
-                    }
-
-                    // open found links in same tab
-                    document.querySelectorAll(".video > a")?.forEach(function (element) {
-                        element.removeAttribute("target");
-                    });
                 }
 
                 break;
@@ -1003,10 +1028,12 @@ async function addImprovements() {
                     // put once to clipboard
                     // console.log(`${source}: ${avid}`);
 
-                    copyTitleToClipboard(avid)
+                    copyTitleToClipboard()
                         .then(() => {
                             avidCopiedToClipboard = true;
-                            runLocalSearch();
+                            setTimeout(() => {
+                                runLocalSearch();
+                            }, 50);
                         })
                         .catch(function (err) {
                             console.error("Failed to copy text: ", err);
@@ -1153,8 +1180,8 @@ async function addImprovements() {
             ""
         );
         addSearchLinkAndOpenAllButton(
-            "DuckDuckGo | Video Web Search",
-            "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + '"' + avid + '"' + " JAV",
+            "DuckDuckGo | Video Rapidgator Search",
+            "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + encodeURIComponent(`"${avid}" "Rapidgator"`),
             "",
             true
         );
@@ -1248,7 +1275,7 @@ async function addImprovements() {
             openAllButton.textContent = buttonTitle;
             openAllButton.className = "smallbutton smallbutton-mod";
 
-            openAllButton.addEventListener("click", function () {
+            openAllButton.addEventListener("click", async function () {
                 let linksToOpen = document.querySelectorAll(`.${className}.added-links a`);
                 let reversedLinks = Array.from(linksToOpen).reverse();
 
@@ -1256,12 +1283,14 @@ async function addImprovements() {
                 GM_setValue("externalSearchMode", true);
 
                 // TODO: needs a more solid solution without brute force
+                const timeoutValue = await GM_getValue(
+                    "externalSearchModeTimeout",
+                    configurationOptions.externalSearchModeTimeout.default
+                );
                 setTimeout(async () => {
                     GM_setValue("externalSearchMode", false);
                     console.log("externalSearchMode off");
-                }, externalSearchModeTimeout + 2000);
-
-                // open in background tabs
+                }, timeoutValue + 2000);
                 if (className === "Collect-Rapidgator-Links") {
                     reversedLinks.forEach(function (link) {
                         GM_openInTab(link.href);
@@ -1285,7 +1314,7 @@ async function addImprovements() {
         function addButton(text, action) {
             let button = document.createElement("button");
             button.textContent = text;
-            button.title = "Hotkey: <";
+            button.title = "Hotkey: < or \\";
             button.className = "smallbutton smallbutton-mod";
             button.style = "position: relative; top: 7px;";
             button.onclick = function () {
@@ -1389,11 +1418,15 @@ async function addImprovements() {
         });
     }
 
-    function addFaceRecognitionSearchButton() {
+    function addCastSearchButton() {
         const castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
+        const span = document.createElement("span");
+        span.style = "display: block; margin-top: 5px";
+        span.className = "find-cast";
+        castContainer.appendChild(span);
 
         function addButton(text, link) {
-            let button = document.createElement("button");
+            const button = document.createElement("button");
             button.textContent = text;
             button.className = "smallbutton smallbutton-mod";
             button.style = "width: unset";
@@ -1401,14 +1434,16 @@ async function addImprovements() {
                 window.open(link, "_blank");
             };
 
-            let span = document.createElement("span");
-            span.style = "display: block; margin-top: 5px";
             span.appendChild(button);
+        }
 
-            castContainer.appendChild(span);
+        if (!avid) {
+            console.log("getVideoThumbnailUrl: no AVID");
+            return;
         }
 
         addButton("Find cast with facial recognition", "https://xslist.org/en/searchByImage");
+        addButton("Cast by scene", "https://avwikidb.com/en/work/" + avid);
     }
 
     async function makeFavoriteCastVisible() {
@@ -1594,6 +1629,10 @@ async function addImprovements() {
                                 infoBox.style.display = "none";
                                 clearInterval(countdownInterval);
                                 countdownInterval = null;
+                                const submitButton = document.querySelector("#ui-accordion-accordion-panel-1 > div.center > input");
+                                if (submitButton) {
+                                    submitButton.click();
+                                }
                             }
                         }, 1000);
                     }
@@ -1623,7 +1662,7 @@ async function addImprovements() {
 // =======================================================================================
 
 async function addVideoThumbnails() {
-    const configured = await GM_getValue("Video-Thumbnails", true);
+    const configured = await GM_getValue("videoThumbnails", configurationOptions.videoThumbnails.default);
     if (!configured) return;
 
     function addThumbnailCss() {
@@ -1658,7 +1697,6 @@ async function addVideoThumbnails() {
         // only in details view
         if (!/[a-z]{2}\/\?v=jav.*/.test(url)) return;
 
-        getAvid();
         if (!avid) {
             console.log("getVideoThumbnailUrl: no AVID");
             return;
@@ -1932,7 +1970,11 @@ async function addVideoThumbnails() {
         }
     }
 
-    function xmlhttpRequest(url, referer = "", timeout = externalSearchTimeout) {
+    async function xmlhttpRequest(url, referer = "", timeout = null) {
+        if (timeout === null) {
+            timeout = await GM_getValue("externalDataFetchTimeout", configurationOptions.externalDataFetchTimeout.default);
+        }
+
         return new Promise((resolve, reject) => {
             console.log(`request: ${url}`);
             let details = {
@@ -2028,7 +2070,7 @@ function configurationMenu() {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        width: 300px;
+        width: 400px;
         padding: 20px;
         background-color: #fff;
         border-radius: 10px;
@@ -2045,8 +2087,33 @@ function configurationMenu() {
     }
     
     .checkbox-label {
-        display: block;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
         margin-bottom: 10px;
+    }
+    
+    .checkbox-label:last-of-type {
+        margin-bottom: 25px;
+    }
+    
+    .checkbox-label input[type="checkbox"] {
+        margin-top: 2px;
+        flex-shrink: 0;
+    }
+    
+    .input-label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 10px;
+    }
+    
+    .input-label input[type="number"] {
+        padding: 6px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
     }
     
     .close-button {
@@ -2077,22 +2144,53 @@ function configurationMenu() {
     title.className = "modal-title";
     modal.appendChild(title);
 
-    // Add checkboxes
-    configurationOptions.forEach((option) => {
-        const label = document.createElement("label");
-        label.className = "checkbox-label";
+    // Add checkboxes and input fields
+    Object.entries(configurationOptions).forEach(([key, option]) => {
+        // Check if the default value is a boolean (checkbox) or number (input)
+        if (typeof option.default === "boolean") {
+            const label = document.createElement("label");
+            label.className = "checkbox-label";
 
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = GM_getValue(option, true);
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = GM_getValue(key, option.default);
 
-        checkbox.addEventListener("change", () => {
-            GM_setValue(option, checkbox.checked);
-        });
+            checkbox.addEventListener("change", () => {
+                GM_setValue(key, checkbox.checked);
+            });
 
-        label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(` ${option}`));
-        modal.appendChild(label);
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(` ${option.label}`));
+            modal.appendChild(label);
+        } else if (typeof option.default === "number") {
+            const container = document.createElement("div");
+            container.className = "input-label";
+
+            const label = document.createElement("label");
+            label.textContent = option.label;
+
+            const input = document.createElement("input");
+            input.type = "number";
+            input.value = GM_getValue(key, option.default);
+
+            input.addEventListener("change", () => {
+                const value = input.value.trim();
+                if (value === "") {
+                    // If empty, delete the value to revert to default
+                    GM_deleteValue(key);
+                    input.value = option.default;
+                } else {
+                    const parsedValue = parseInt(value, 10);
+                    if (!isNaN(parsedValue)) {
+                        GM_setValue(key, parsedValue);
+                    }
+                }
+            });
+
+            container.appendChild(label);
+            container.appendChild(input);
+            modal.appendChild(container);
+        }
     });
 
     // Add button to close
@@ -2124,7 +2222,7 @@ function configurationMenu() {
 // =======================================================================================
 
 async function initializeBeforeRender() {
-    const configured = await GM_getValue("Improvements", true);
+    const configured = await GM_getValue("improvements", configurationOptions.improvements.default);
     if (!configured) return;
 
     addImprovementsCss();

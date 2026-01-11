@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260110a
+// @version        20260111
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -61,6 +61,58 @@ const configurationOptions = {
     },
     videoThumbnails: {
         label: "Display video preview images",
+        default: true,
+    },
+    // Master toggle to disable all cast image search buttons
+    castButtonsEnabled: {
+        label: "Enable cast image search buttons",
+        default: true,
+    },
+    // Cast image search buttons (individual toggles)
+    castButtons: {
+        minnano: {
+            text: "Minnano",
+            link: "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word=",
+            enabled: true,
+        },
+        avdbs: { text: "AVDBS", link: "https://www.avdbs.com/menu/search.php?seq=42978591&tab=1&kwd=", enabled: true },
+        v2ph: { text: "V2PH", link: "https://www.v2ph.com/search/?q=", enabled: true },
+        kawaiithong: { text: "KawaiiThong", link: "https://kawaiithong.com/search_kawaii_pics/", enabled: true },
+        jjgirls: { text: "JJGirls", link: "https://jjgirls.com/match.php?model=", enabled: true },
+        yandex: { text: "Yandex", link: "https://yandex.com/images/search?text=", enabled: true },
+        xslist: { text: "XsList", link: "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ", enabled: true },
+        beautimetas: { text: "BeautiMetas", link: "https://beautifulmetas.com/search_result/", enabled: true },
+    },
+    searchGroupTorrent: {
+        label: "Torrent sources",
+        default: true,
+    },
+    searchGroupThumbnails1: {
+        label: "Thumbnail search 1",
+        default: true,
+    },
+    searchGroupThumbnails2: {
+        label: "Thumbnail search 2",
+        default: true,
+    },
+    searchGroupRapidgator: {
+        label: "Rapidgator sources",
+        default: true,
+    },
+    searchGroupGDrive: {
+        label: "Google Drive sources",
+        default: true,
+    },
+    searchGroupStream: {
+        label: "Stream sources",
+        default: true,
+    },
+    searchGroupResearchPlatforms: {
+        label: "Alternative research platforms",
+        default: true,
+    },
+    searchGroupDuckDuckGo: {
+        label: "DuckDuckGo searches",
         default: true,
     },
     externalSearchModeTimeout: {
@@ -228,17 +280,16 @@ function addImprovementsCss() {
                 .added-links-separator {
                     margin-top: 10px;
                 }
+               .searches-label {
+                    margin-left: 40px;
+                    margin-top: 10px;
+                    font-weight: bold;
+                    display: inline-block;
+                }
                 .added-links.Torrent {
                     display: inline-block;
                     width: auto;
                     margin-left: 5px;
-                }
-                .added-links.added-links-separator.Torrent {
-                    margin-left: 40px;
-                }
-                .added-links.added-links-separator.Torrent::before {
-                    content: "Searches: ";
-                    font-weight: bold;
                 }
                 .added-links.Torrent:not(.added-links-separator)::before {
                     content: " • ";
@@ -300,31 +351,6 @@ function addImprovementsCss() {
                     }
                 }
 
-                /* addImageSearchToCasts */
-                .cast-container {
-                    display: flex;
-                    flex-wrap: wrap;
-                    margin: 0px 2px 2px;
-                    border-radius: 5px;
-                    /* 
-                    background: rgb(243, 243, 243);
-                    padding: 2px 3px;
-                    */
-                }
-                span.cast {
-                    display: flex;
-                    flex-wrap: nowrap;
-                    align-items: center;
-                    margin-bottom: 0;
-                    margin-right: 0;
-                    gap: 4px;
-                }
-                .image-search {
-                    display: flex;
-                    flex-wrap: wrap;
-                    align-content: flex-end;
-                    padding: 0 3px;
-                }
                 .customButton {
                     font-size: 12px;
                     background-color: #f9f9f9;
@@ -1174,74 +1200,121 @@ async function addImprovements() {
 
     function setSearchLinks() {
         // add search links and buttons
-        addSearchLinkAndOpenAllButton(
-            "DuckDuckGo | Video Image Search",
-            "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
-            ""
-        );
-        addSearchLinkAndOpenAllButton(
-            "DuckDuckGo | Video Rapidgator Search",
-            "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + encodeURIComponent(`"${avid}" "Rapidgator"`),
-            "",
-            true
-        );
 
-        addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/en?q=" + avid, "");
-        addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
+        // DuckDuckGo
+        if (GM_getValue("searchGroupDuckDuckGo", configurationOptions.searchGroupDuckDuckGo.default)) {
+            addSearchLinkAndOpenAllButton(
+                "DuckDuckGo | Video Image Search",
+                "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
+                ""
+            );
+            addSearchLinkAndOpenAllButton(
+                "DuckDuckGo | Video Rapidgator Search",
+                "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + encodeURIComponent(`"${avid}" "Rapidgator"`),
+                "",
+                true
+            );
+        }
 
-        addSearchLinkAndOpenAllButton(
-            "HighPorn | Stream",
-            "https://highporn.net/search/videos?search_query=" + avid,
-            "Open-Stream-Group"
-        );
-        addSearchLinkAndOpenAllButton("BIGO JAV | Stream", "https://bigojav.com/?s=" + avid, "Open-Stream-Group");
-        addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Open-Stream-Group");
-        // addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");
-        addSearchLinkAndOpenAllButton("SEXTB | Stream", "https://sextb.net/search/" + avid, "Open-Stream-Group");
-        addSearchLinkAndOpenAllButton("JAV Most | Stream", "https://www5.javmost.com/search/" + avid, "Open-Stream-Group");
-        addSearchLinkAndOpenAllButton("TwoJAV | Stream", "https://www.twojav.com/en/search?q=" + avid, "Open-Stream-Group");
-        addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Open-Stream-Group", true);
+        // Alternative research platforms
+        if (GM_getValue("searchGroupResearchPlatforms", configurationOptions.searchGroupResearchPlatforms.default)) {
+            addSearchLinkAndOpenAllButton("JavPlace | alternative research platform", "https://jav.place/en?q=" + avid, "");
+            addSearchLinkAndOpenAllButton("JAV-Menu | alternative research platform", "https://jjavbooks.com/en/" + avid, "", true);
+        }
 
-        addSearchLinkAndOpenAllButton("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + avid, "Open-GDrive-Group");
-        // seems offline
-        // addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "Open-GDrive-Group");
-        addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "Open-GDrive-Group", true);
+        // Stream
+        if (GM_getValue("searchGroupStream", configurationOptions.searchGroupStream.default)) {
+            addSearchLinkAndOpenAllButton(
+                "HighPorn | Stream",
+                "https://highporn.net/search/videos?search_query=" + avid,
+                "Open-Stream-Group"
+            );
+            addSearchLinkAndOpenAllButton("BIGO JAV | Stream", "https://bigojav.com/?s=" + avid, "Open-Stream-Group");
+            addSearchLinkAndOpenAllButton("Jable | Stream", "https://jable.tv/search/" + avid + "/", "Open-Stream-Group");
+            // addSearchLinkAndOpenAllButton("MDTAIWAN | Stream", "https://mdtaiwan.com/?s=" + avid, "Open-Stream-Group");
+            addSearchLinkAndOpenAllButton("SEXTB | Stream", "https://sextb.net/search/" + avid, "Open-Stream-Group");
+            addSearchLinkAndOpenAllButton("JAV Most | Stream", "https://www5.javmost.com/search/" + avid, "Open-Stream-Group");
+            addSearchLinkAndOpenAllButton("TwoJAV | Stream", "https://www.twojav.com/en/search?q=" + avid, "Open-Stream-Group");
+            addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Open-Stream-Group", true);
+        }
 
-        addSearchLinkAndOpenAllButton(
-            "JAVDAILY | RG  (optional)",
-            `https://duckduckgo.com/?q=site:javdaily.eklablog.com+"${avid}"`,
-            ""
-        );
-        // addSearchLinkAndOpenAllButton(
-        //     "JAVDAILY | RG  (optional)",
-        //     `https://duckduckgo.com/?q=site:javdaily31.eklablog.com+${avid}`,
-        //     ""
-        // );
-        // addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
-        addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
+        // Google Drive
+        if (GM_getValue("searchGroupGDrive", configurationOptions.searchGroupGDrive.default)) {
+            addSearchLinkAndOpenAllButton("JAV GDRIVE | Google Drive", "https://javx357.com/?s=" + avid, "Open-GDrive-Group");
+            // seems offline
+            // addSearchLinkAndOpenAllButton("Arc JAV | Google Drive", "https://arcjav.com/?s=" + avid, "Open-GDrive-Group");
+            addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "Open-GDrive-Group", true);
+        }
 
-        // to add/remove Rapidgator sources, check in general Userscript match, in handleSearchResults(), runSearch() and under comment "batch external download link and preview searches"
-        addSearchLinkAndOpenAllButton("Maddawg JAV | RG", "https://maddawgjav.net/?s=" + avid, "Collect-Rapidgator-Links");
-        addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.ai/en/search/" + avid, "Collect-Rapidgator-Links");
-        addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Collect-Rapidgator-Links");
-        addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "Collect-Rapidgator-Links", true);
+        // Rapidgator
+        if (GM_getValue("searchGroupRapidgator", configurationOptions.searchGroupRapidgator.default)) {
+            // RG optional
+            addSearchLinkAndOpenAllButton(
+                "JAVDAILY | RG  (optional)",
+                `https://duckduckgo.com/?q=site:javdaily.eklablog.com+"${avid}"`,
+                ""
+            );
+            // addSearchLinkAndOpenAllButton(
+            //     "JAVDAILY | RG  (optional)",
+            //     `https://duckduckgo.com/?q=site:javdaily31.eklablog.com+${avid}`,
+            //     ""
+            // );
+            // addSearchLinkAndOpenAllButton("JAVDAILY | RG  (optional)", "https://javdaily31.blogspot.com/search?q=" + avid, "");
+            addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true);
 
-        addSearchLinkAndOpenAllButton("3xPlanet | Thumbnails", "https://3xplanet.com/?s=" + avid, "Search-Thumbnails-2");
-        addSearchLinkAndOpenAllButton("JAVAkiba | Thumbnails", "https://javakiba.org/?s=" + avid, "Search-Thumbnails-2");
-        addSearchLinkAndOpenAllButton("Video-JAV | Thumbnails", "http://video-jav.net/?s=" + avid, "Search-Thumbnails-2", true);
+            // to add/remove Rapidgator sources, check in general Userscript match, in handleSearchResults(), runSearch() and under comment "batch external download link and preview searches"
+            addSearchLinkAndOpenAllButton("Maddawg JAV | RG", "https://maddawgjav.net/?s=" + avid, "Collect-Rapidgator-Links");
+            addSearchLinkAndOpenAllButton("MissAV | RG | Stream", "https://missav.ai/en/search/" + avid, "Collect-Rapidgator-Links");
+            addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Collect-Rapidgator-Links");
+            addSearchLinkAndOpenAllButton("JAV Guru | RG | Stream", "https://jav.guru/?s=" + avid, "Collect-Rapidgator-Links", true);
+        }
 
-        addSearchLinkAndOpenAllButton("Max JAV | Thumbnails", "https://maxjav.com/?s=" + avid, "Search-Thumbnails-1");
-        addSearchLinkAndOpenAllButton(
-            "Akiba-Online | Thumbnails",
-            "https://www.akiba-online.com/search/?q=" + avid + "&c%5Btitle_only%5D=1&o=date&search=" + avid,
-            "Search-Thumbnails-1",
-            true
-        );
+        // Thumbnails 2
+        if (GM_getValue("searchGroupThumbnails2", configurationOptions.searchGroupThumbnails2.default)) {
+            addSearchLinkAndOpenAllButton("3xPlanet | Thumbnails", "https://3xplanet.com/?s=" + avid, "Search-Thumbnails-2");
+            addSearchLinkAndOpenAllButton("JAVAkiba | Thumbnails", "https://javakiba.org/?s=" + avid, "Search-Thumbnails-2");
+            addSearchLinkAndOpenAllButton("Video-JAV | Thumbnails", "http://video-jav.net/?s=" + avid, "Search-Thumbnails-2", true);
+        }
 
-        addSearchLinkAndOpenAllButton("BT1207", "https://bt1207so.top/?find=" + avid, "Torrent");
-        addSearchLinkAndOpenAllButton("Sukebei", "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid, "Torrent");
-        addSearchLinkAndOpenAllButton("BTDig", "https://btdig.com/search?order=3&q=" + avid, "Torrent");
-        addSearchLinkAndOpenAllButton("BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "Torrent", true);
+        // Thumbnails 1
+        if (GM_getValue("searchGroupThumbnails1", configurationOptions.searchGroupThumbnails1.default)) {
+            addSearchLinkAndOpenAllButton("Max JAV | Thumbnails", "https://maxjav.com/?s=" + avid, "Search-Thumbnails-1");
+            addSearchLinkAndOpenAllButton(
+                "Akiba-Online | Thumbnails",
+                "https://www.akiba-online.com/search/?q=" + avid + "&c%5Btitle_only%5D=1&o=date&search=" + avid,
+                "Search-Thumbnails-1",
+                true
+            );
+        }
+
+        // Torrent
+        if (GM_getValue("searchGroupTorrent", configurationOptions.searchGroupTorrent.default)) {
+            addSearchLinkAndOpenAllButton("BT1207", "https://bt1207so.top/?find=" + avid, "Torrent");
+            addSearchLinkAndOpenAllButton("Sukebei", "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid, "Torrent");
+            addSearchLinkAndOpenAllButton("BTDig", "https://btdig.com/search?order=3&q=" + avid, "Torrent");
+            addSearchLinkAndOpenAllButton("BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "Torrent", true);
+        }
+
+        // Separate label for "Searches:" (only show if any search links were added)
+        (function manageSearchesLabel() {
+            const addedLinks = document.querySelectorAll(".added-links");
+            const existingLabel = document.querySelector(".searches-label");
+
+            if (addedLinks.length > 0) {
+                if (!existingLabel) {
+                    const searchesLabel = document.createElement("div");
+                    searchesLabel.className = "searches-label";
+                    searchesLabel.textContent = "Searches: ";
+
+                    // Insert label before the first added-links element
+                    const firstAdded = addedLinks[0];
+                    firstAdded.parentNode.insertBefore(searchesLabel, firstAdded);
+                }
+            } else {
+                // remove label if no search links exist
+                if (existingLabel) existingLabel.remove();
+            }
+        })();
     }
 
     /**
@@ -1370,12 +1443,41 @@ async function addImprovements() {
         }
     }
 
-    function addCastImagesSearchButtons() {
-        let castElements = document.querySelectorAll("[id^=cast]");
-        castElements.forEach(function (castElement) {
+    async function addCastImagesSearchButtons() {
+        const masterEnabled = await GM_getValue("castButtonsEnabled", true);
+        if (!masterEnabled) return;
+
+        GM_addStyle(`
+            .cast-container {
+                display: flex;
+                flex-wrap: wrap;
+                margin: 0px 2px 2px;
+                border-radius: 5px;
+                /* 
+                background: rgb(243, 243, 243);
+                padding: 2px 3px;
+                */
+            }
+            span.cast {
+                display: flex;
+                flex-wrap: nowrap;
+                align-items: center;
+                margin-bottom: 0;
+                margin-right: 0;
+                gap: 4px;
+            }
+            .image-search {
+                display: flex;
+                flex-wrap: wrap;
+                align-content: flex-end;
+                padding: 0 3px;
+            }
+        `);
+
+        const castElements = document.querySelectorAll("[id^=cast]");
+        for (let castElement of castElements) {
             // create a new div to wrap the cast element
             let containerDiv = document.createElement("div");
-            // containerDiv.className = castElement.id;
             containerDiv.className = "cast-container";
             castElement.parentNode.insertBefore(containerDiv, castElement);
             containerDiv.appendChild(castElement);
@@ -1406,16 +1508,12 @@ async function addImprovements() {
                 imageSearchDiv.appendChild(a);
             }
 
-            addButton("Minnano", "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word=");
-            addButton("AVDBS", "https://www.avdbs.com/menu/search.php?seq=42978591&tab=1&kwd=");
-            addButton("V2PH", "https://www.v2ph.com/search/?q=");
-            addButton("KawaiiThong", "https://kawaiithong.com/search_kawaii_pics/");
-            addButton("JJGirls", "https://jjgirls.com/match.php?model=");
-            addButton("Yandex", "https://yandex.com/images/search?text=");
-            addButton("XsList", "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ");
-            // addButton("BeautiMetas", "https://en.beautifulmetas.com/search_result/");
-            // https://en.girlgirlgo.net
-        });
+            // Read button definitions from configurationOptions.castButtons
+            for (let [key, buttonDef] of Object.entries(configurationOptions.castButtons)) {
+                const enabled = await GM_getValue(`castButton_${key}`, buttonDef.enabled);
+                if (enabled) addButton(buttonDef.text, buttonDef.link);
+            }
+        }
     }
 
     function addCastSearchButton() {
@@ -2063,15 +2161,15 @@ function configurationMenu() {
         z-index: 9998;
         transition: background-color 0.5s ease;
     }
-    
+
     .modal {
         font-family: var(--ipt-font-family);
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        width: 400px;
-        padding: 20px;
+        width: 420px;
+        padding: 16px;
         background-color: #fff;
         border-radius: 10px;
         box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
@@ -2079,46 +2177,55 @@ function configurationMenu() {
         opacity: 0;
         transition: opacity 0.5s ease;
     }
-    
+
     .modal-title {
-        margin-bottom: 20px;
+        margin-bottom: 12px;
         font-size: 16px;
         font-weight: bold;
     }
-    
+
     .checkbox-label {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         gap: 8px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
     }
-    
-    .checkbox-label:last-of-type {
-        margin-bottom: 25px;
-    }
-    
     .checkbox-label input[type="checkbox"] {
-        margin-top: 2px;
+        margin-top: 0;
         flex-shrink: 0;
     }
-    
+
+    /* Grid layout only for cast buttons section */
+    .cast-buttons-section .checkbox-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px 12px;
+        margin-bottom: 8px;
+    }
+
+    .cast-buttons-section .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+
     .input-label {
         display: flex;
         flex-direction: column;
         gap: 4px;
         margin-bottom: 10px;
     }
-    
     .input-label input[type="number"] {
         padding: 6px;
         border: 1px solid #ccc;
         border-radius: 4px;
         font-size: 14px;
     }
-    
+
     .close-button {
         display: block;
-        margin: 30px auto 0;
+        margin: 18px auto 0;
         font-size: unset;
     }
     `);
@@ -2144,7 +2251,7 @@ function configurationMenu() {
     title.className = "modal-title";
     modal.appendChild(title);
 
-    // Add checkboxes and input fields
+    // Add regular checkboxes and input fields (NOT in grid)
     Object.entries(configurationOptions).forEach(([key, option]) => {
         // Check if the default value is a boolean (checkbox) or number (input)
         if (typeof option.default === "boolean") {
@@ -2156,7 +2263,11 @@ function configurationMenu() {
             checkbox.checked = GM_getValue(key, option.default);
 
             checkbox.addEventListener("change", () => {
-                GM_setValue(key, checkbox.checked);
+                if (checkbox.checked === option.default) {
+                    GM_deleteValue(key);
+                } else {
+                    GM_setValue(key, checkbox.checked);
+                }
             });
 
             label.appendChild(checkbox);
@@ -2190,6 +2301,42 @@ function configurationMenu() {
             container.appendChild(label);
             container.appendChild(input);
             modal.appendChild(container);
+        } else if (key === "castButtons") {
+            // Cast buttons section - in a separate area with grid layout
+            const castButtonsSection = document.createElement("div");
+            castButtonsSection.className = "cast-buttons-section";
+
+            const castButtonsTitle = document.createElement("h4");
+            castButtonsTitle.textContent = "Cast Image Search Buttons";
+            castButtonsTitle.style = "margin-top: 20px; margin-bottom: 10px; font-weight: bold; font-size: 14px;";
+            castButtonsSection.appendChild(castButtonsTitle);
+
+            const castButtonsGrid = document.createElement("div");
+            castButtonsGrid.className = "checkbox-grid";
+
+            Object.entries(option).forEach(([btnKey, buttonDef]) => {
+                const label = document.createElement("label");
+                label.className = "checkbox-label";
+
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.checked = GM_getValue(`castButton_${btnKey}`, buttonDef.enabled);
+
+                checkbox.addEventListener("change", () => {
+                    if (checkbox.checked === buttonDef.enabled) {
+                        GM_deleteValue(`castButton_${btnKey}`);
+                    } else {
+                        GM_setValue(`castButton_${btnKey}`, checkbox.checked);
+                    }
+                });
+
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(` ${buttonDef.text}`));
+                castButtonsGrid.appendChild(label);
+            });
+
+            castButtonsSection.appendChild(castButtonsGrid);
+            modal.appendChild(castButtonsSection);
         }
     });
 

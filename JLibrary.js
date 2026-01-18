@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260112
+// @version        20260118
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -275,7 +275,7 @@ function addImprovementsCss() {
 
     switch (true) {
         // JAV Details
-        case /[a-z]{2}\/\?v=jav.*/.test(url): {
+        case /[a-z]{2}\/jav.*/.test(url): {
             GM_addStyle(`
                 #toplogo .languagemenu {
                     top: 45px;
@@ -633,7 +633,7 @@ async function addImprovements() {
 
         switch (true) {
             // JAV Details
-            case /[a-z]{2}\/\?v=jav.*/.test(url): {
+            case /[a-z]{2}\/jav.*/.test(url): {
                 console.log("JAV Details");
 
                 if (!avid) {
@@ -1885,7 +1885,7 @@ async function addVideoThumbnails() {
 
     function getVideoThumbnailUrl() {
         // only in details view
-        if (!/[a-z]{2}\/\?v=jav.*/.test(url)) return;
+        if (!/[a-z]{2}\/jav.*/.test(url)) return;
 
         if (!avid) {
             console.log("getVideoThumbnailUrl: no AVID");
@@ -2734,7 +2734,7 @@ async function initializeBeforeRender() {
 
     switch (true) {
         // JAV Details
-        case /[a-z]{2}\/\?v=jav.*/.test(url):
+        case /[a-z]{2}\/jav.*/.test(url):
             // on low resolutions cover image get fixed size by site javascript
             removeResizingOfCoverImage();
             break;

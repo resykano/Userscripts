@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260118
+// @version        20260119
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -131,12 +131,21 @@ const configurationOptions = {
     },
 };
 
-function getTitleElement() {
-    return document.querySelector("#video_id > table > tbody > tr > td.text");
+async function getTitleElement() {
+    return await waitForElement("#video_id > table > tbody > tr > td.text");
 }
-function getAvid() {
+async function getAvid() {
     if (!avid) {
-        avid = getTitleElement()?.textContent;
+        const titleElement = await getTitleElement();
+        if (!titleElement) {
+            return null;
+        }
+        
+        const textContent = titleElement?.textContent;
+        if (textContent) {
+            const match = textContent.match(/^(\S+)/);
+            avid = match ? match[1] : textContent;
+        }
 
         // in VR titles, JAVLibrary adds an additional leading zero after hyphen
         // remove these if there are five digits after the hyphen to get correct titles
@@ -145,7 +154,7 @@ function getAvid() {
             avid = avid.replace(/-(0+)/, "-");
         }
     }
-    // return avid;
+    return avid;
 }
 function castContainer() {
     return document.querySelector("#video_cast");
@@ -629,23 +638,22 @@ async function addImprovements() {
         const configured = await GM_getValue("improvements", configurationOptions.improvements.default);
         if (!configured) return;
 
-        getAvid();
-
         switch (true) {
             // JAV Details
             case /[a-z]{2}\/jav.*/.test(url): {
                 console.log("JAV Details");
-
+                
+                await getAvid();
                 if (!avid) {
                     console.log("addImprovements details: no AVID");
                     return;
                 }
 
                 // add title textbox
-                addTitleCopyPerClick();
+                await addTitleCopyPerClick();
 
                 // adds posibility for local search but disabled by default as needs addinal scripts
-                addLocalSearchButton();
+                await addLocalSearchButton();
 
                 // add search links
                 setSearchLinks();
@@ -696,10 +704,10 @@ async function addImprovements() {
                 // autorun local search
                 const authorsMode = await GM_getValue("authorsMode", false);
                 if (authorsMode) {
-                    (function () {
+                    (async function () {
                         // Handle the case when the window is opened in the background
                         window.addEventListener("focus", function () {
-                            executeInitialLocalSearch("EventListener");
+                            executeInitialLocalSearch("EventListener").catch(err => console.error("Error in executeInitialLocalSearch:", err));
                         });
                         // Handle the case when the window is opened in the foreground
                         // IntersectionObserver is used for better performance and reliability
@@ -707,13 +715,13 @@ async function addImprovements() {
                         const observer = new IntersectionObserver((entries) => {
                             entries.forEach((entry) => {
                                 if (entry.isIntersecting) {
-                                    executeInitialLocalSearch("IntersectionObserver");
+                                    executeInitialLocalSearch("IntersectionObserver").catch(err => console.error("Error in executeInitialLocalSearch:", err));
                                 }
                             });
                         });
                         // Set up the observer after a short delay to ensure DOM is loaded
-                        setTimeout(() => {
-                            const textElement = getTitleElement();
+                        setTimeout(async () => {
+                            const textElement = await getTitleElement();
                             if (textElement) {
                                 observer.observe(textElement);
                             }
@@ -1045,8 +1053,8 @@ async function addImprovements() {
         }
     }
 
-    function addTitleCopyPerClick() {
-        let titleElement = getTitleElement();
+    async function addTitleCopyPerClick() {
+        let titleElement = await getTitleElement();
 
         titleElement.style.cursor = "pointer";
         titleElement.addEventListener("click", function () {
@@ -1054,8 +1062,8 @@ async function addImprovements() {
         });
     }
 
-    function executeInitialLocalSearch(source) {
-        const textElement = getTitleElement();
+    async function executeInitialLocalSearch(source) {
+        const textElement = await getTitleElement();
 
         if (textElement && !avidCopiedToClipboard && document.hasFocus()) {
             // if tab was opened with link
@@ -1090,7 +1098,7 @@ async function addImprovements() {
         const authorsMode = await GM_getValue("authorsMode", false);
 
         if (authorsMode) {
-            let targetElement = getTitleElement();
+            let targetElement = await getTitleElement();
 
             let newButton = document.createElement("button");
             newButton.textContent = "Local-Search";
@@ -1883,10 +1891,11 @@ async function addVideoThumbnails() {
             `);
     }
 
-    function getVideoThumbnailUrl() {
+    async function getVideoThumbnailUrl() {
         // only in details view
         if (!/[a-z]{2}\/jav.*/.test(url)) return;
 
+        await getAvid();
         if (!avid) {
             console.log("getVideoThumbnailUrl: no AVID");
             return;
@@ -2758,17 +2767,7 @@ function main() {
                 addVideoThumbnails();
             };
 
-            // Sometimes the EventListener is not executed to prevent this:
-            // Check if the DOM is already loaded before adding the event listener
-            // If it's still loading, add the event listener for "DOMContentLoaded"
-            // If it's already loaded, execute the main function immediately
-            if (document.readyState === "loading") {
-                // Add event listener if the document is still loading
-                window.addEventListener("load", executeFunctions, { once: true });
-            } else {
-                // Execute immediately if the document is already loaded
-                executeFunctions();
-            }
+            executeFunctions();
         }
     }
 }

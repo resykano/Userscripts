@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260208
+// @version        20260208.1
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -187,10 +187,11 @@ let nonFavoriteImage = createBase64Svg("lightgray");
  *
  * @param {string} selector CSS selector of a NodeList/HTMLCollection
  * @param {number} index
+ * @param {number} timeoutMs Optional timeout in milliseconds to stop waiting for the element. If the timeout is reached, the promise will resolve with null. Default is 0, which means no timeout.
  * @see source: {@link https://stackoverflow.com/a/61511955/13427318}
  * @returns Element
  */
-function waitForElement(selector, index = 0) {
+function waitForElement(selector, index = 0, timeoutMs = 0) {
     return new Promise((resolve) => {
         if (selector && document.querySelector(selector) && document.querySelectorAll(selector)[index]) {
             return resolve(document.querySelectorAll(selector)[index]);
@@ -198,10 +199,19 @@ function waitForElement(selector, index = 0) {
 
         const observer = new MutationObserver(() => {
             if (selector && document.querySelectorAll(selector) && document.querySelectorAll(selector)[index]) {
+                if (timeoutId) clearTimeout(timeoutId);
                 resolve(document.querySelectorAll(selector)[index]);
                 observer.disconnect();
             }
         });
+
+        let timeoutId = null;
+        if (timeoutMs && timeoutMs > 0) {
+            timeoutId = setTimeout(() => {
+                observer.disconnect();
+                resolve(null);
+            }, timeoutMs);
+        }
 
         observer.observe(document, {
             childList: true,
@@ -262,7 +272,7 @@ function addImprovementsCss() {
 
         /* search area layout (as also needed for no search results) */
         #video_search td.text {
-            padding-left: 5px;
+            padding-left: 4px;
         }
         #video_search td.text div:first-child {
             margin-top: 0px;
@@ -1443,6 +1453,7 @@ async function addImprovements() {
                 false,
                 contentTd,
             );
+
             addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true, contentTd);
             addSearchLinkAndOpenAllButton(
                 "JAVDAILY | RG  (optional)",
@@ -1451,6 +1462,7 @@ async function addImprovements() {
                 false,
                 contentTd,
             );
+            addSearchLinkAndOpenAllButton("JAVStore | RG (optional)", "https://javstore.net/search?q=" + avid, "", false, contentTd);
         }
 
         // Google Drive
@@ -2021,8 +2033,7 @@ async function addVideoThumbnails() {
     // Get big preview image URL from JavLibrary
     async function getVideoThumbnailUrlFromJavLibrary(avid) {
         async function searchLinkOnJavLibrary(avid) {
-            // wait for at least one image with anchor to appear
-            await waitForElement("#video_comments table.comment a > img");
+            await waitForElement("#video_comments table.comment a > img", 0, 1000);
             let linkNodeList = document.querySelectorAll("a");
             let targetImageUrl;
 

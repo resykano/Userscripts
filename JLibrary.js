@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260120
+// @version        20260208
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -56,16 +56,19 @@ const configurationOptions = {
         default: true,
     },
     searchByIDFilter: {
-        label: "Filter Blu-ray editions and mismatched AVIDs from search results (only if improvements are enabled)",
+        label: "Filter Blu-ray editions and mismatched AVIDs from search results",
         default: false,
+        category: "improvements",
     },
     // Master toggle to disable all cast image search buttons
     castButtonsEnabled: {
         label: "Enable cast image search buttons",
         default: true,
+        category: "improvements",
     },
     // Cast image search buttons (individual toggles)
     castButtons: {
+        category: "improvements",
         minnano: {
             text: "Minnano",
             link: "https://www.minnano-av.com/search_result.php?search_scope=actress&search_word=",
@@ -79,11 +82,18 @@ const configurationOptions = {
         xslist: { text: "XsList", link: "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ", enabled: true },
         beautimetas: { text: "BeautiMetas", link: "https://beautifulmetas.com/search_result/", enabled: true },
     },
+    modernLinkStyles: {
+        label: "Modern link styling for search links and buttons",
+        default: true,
+        category: "improvements",
+    },
     castSearchButtonEnabled: {
         label: "Enable cast search button (facial recognition and cast by scene)",
         default: true,
+        category: "improvements",
     },
     searchGroups: {
+        category: "improvements",
         searchGroupTorrent: {
             label: "Torrent sources",
             default: true,
@@ -120,6 +130,7 @@ const configurationOptions = {
     externalSearchModeTimeout: {
         label: "Allowed execution time of Collect Rapidgator Link & Thumbnails Search (Milliseconds)",
         default: 8000,
+        category: "improvements",
     },
     videoThumbnails: {
         label: "Display video preview images",
@@ -256,6 +267,7 @@ function addImprovementsCss() {
         #video_search td.text div:first-child {
             margin-top: 0px;
         }
+        /* search links layout (as also needed for no search results) */
         .added-links {
             width: 370px;
             height: 17px;
@@ -281,6 +293,56 @@ function addImprovementsCss() {
             content: " • ";
         }
     `);
+
+    // Modern link styles
+    const modernLinksEnabled = GM_getValue("modernLinkStyles", configurationOptions.modernLinkStyles.default);
+    if (modernLinksEnabled) {
+        GM_addStyle(`
+            .added-links {
+                margin-bottom: 5px;
+            }
+
+            .added-links a {
+                    background: #667eea;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 3px;
+                    transition: background 0.2s ease;
+                    padding: 2px 9px;
+            }
+            .added-links a:hover {
+                    background: #5568d3;
+            }
+
+            /* addSearchLinkAndOpenAllButton & addFaceRecognitionSearchToCasts */
+            button.smallbutton-mod {
+                margin-left: 5px;
+                margin-top: 0;
+                margin-bottom: 0;
+                padding: 3px 9px;
+                width: 160px;
+                height: 22px;
+                user-select: none;
+                background: #f5576c;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                transition: background 0.2s ease;
+                white-space: nowrap;
+            }
+            button.smallbutton-mod:hover {
+                background: #e03d56;
+            }
+            button.smallbutton-mod:active {
+                opacity: 0.9;
+            }
+
+            /* cast search buttons container (should only be in JAV Details) */
+            .find-cast {
+                margin-left: -2px !important;
+            }
+        `);
+    }
 
     switch (true) {
         // JAV Details
@@ -316,15 +378,11 @@ function addImprovementsCss() {
                     display: none;
                 }
 
-                /* addSearchLinkAndOpenAllButton & addFaceRecognitionSearchToCasts */
-                button.smallbutton-mod {
-                    margin-left: 5px;
-                    margin-top: 0;
-                    margin-bottom: 0;
-                    padding: 3px;
-                    width: 160px;
-                    height: 22px;
-                    user-select = none;
+                /* cast search buttons container */
+                .find-cast {
+                    display: block;
+                    margin-top: 5px;
+                    margin-left: 2px;
                 }
 
                 /* advertising photos */
@@ -1623,7 +1681,6 @@ async function addImprovements() {
 
         const castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
         const span = document.createElement("span");
-        span.style = "display: block; margin-top: 5px; margin-left: -2px";
         span.className = "find-cast";
         castContainer.appendChild(span);
 
@@ -1964,10 +2021,14 @@ async function addVideoThumbnails() {
     // Get big preview image URL from JavLibrary
     async function getVideoThumbnailUrlFromJavLibrary(avid) {
         async function searchLinkOnJavLibrary(avid) {
+            // wait for at least one image with anchor to appear
+            await waitForElement("#video_comments table.comment a > img");
             let linkNodeList = document.querySelectorAll("a");
             let targetImageUrl;
 
-            for (let linkNode of linkNodeList) {
+            // search in reverse order as the most recent comments are more likely to contain the correct image link and last one more relevant for VR videos
+            for (let i = linkNodeList.length - 1; i >= 0; i--) {
+                let linkNode = linkNodeList[i];
                 if (
                     linkNode.href.toLowerCase().includes(avid.toLowerCase()) &&
                     (linkNode.href.includes("pixhost.to") ||
@@ -1988,6 +2049,8 @@ async function addVideoThumbnails() {
                     .replace(/[\?*\"*]/g, "")
                     .replace("/th/", "/i/");
                 if (/imagehaha/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
+                if (/pixhost/gi.test(targetImageUrl))
+                    targetImageUrl = targetImageUrl.replace(/\/t(\d+)\.pixhost\.to\//, "/img$1.pixhost.to/");
 
                 return fetchImageAsBlob(targetImageUrl)
                     .then((blob) => {
@@ -2255,480 +2318,450 @@ async function addVideoThumbnails() {
 // =======================================================================================
 
 function configurationMenu() {
-    GM_addStyle(`
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(0, 0, 0, 0.6);
-            z-index: 9998;
-            transition: background-color 0.3s ease;
-            backdrop-filter: blur(4px);
-        }
-
-        .modal {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 480px;
-            max-height: 85vh;
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            z-index: 9999;
-            opacity: 0;
-            transition: opacity 0.3s ease, transform 0.3s ease;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .modal-header {
-            background: #2d3748;
-            padding: 16px 20px;
-            color: white;
-            border-radius: 16px 16px 0 0;
-        }
-
-        .modal-title {
-            margin: 0;
-            font-size: 18px;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-        }
-
-        .modal-content {
-            padding: 5px;
-            overflow-y: auto;
-            flex: 1;
-        }
-
-        /* Custom scrollbar */
-        .modal-content::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .modal-content::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-
-        .modal-content::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 10px;
-        }
-
-        .modal-content::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-
-        .checkbox-label {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 4px;
-            padding: 5px 12px;
-            background: white;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-            cursor: pointer;
-            border: 1px solid #e0e0e0;
-        }
-
-        .checkbox-label:hover {
-            background: #f8f9fa;
-            border-color: #4a5568;
-            box-shadow: 0 2px 8px rgba(74, 85, 104, 0.1);
-        }
-
-        .checkbox-label input[type="checkbox"] {
-            margin: 0;
-            flex-shrink: 0;
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-            accent-color: #4a5568;
-        }
-
-        .checkbox-label span {
-            font-size: 14px;
-            color: #333;
-            user-select: none;
-        }
-
-        /* buttons section */
-        .buttons-section {
-            margin-top: 3px;
-            margin-bottom: 3px;
-            padding: 8px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-        .buttons-section.hidden {
-            display: none;
-        }
-        .buttons-section h4 {
-            margin: 0 0 6px 0;
-            font-weight: 600;
-            font-size: 15px;
-            color: #4a5568;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .buttons-section .checkbox-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 4px;
-        }
-        .buttons-section .checkbox-label {
-            margin-bottom: 0;
-            padding: 5px 8px;
-            font-size: 13px;
-        }
-
-        /* Input fields */
-        .input-label {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-bottom: 4px;
-            padding: 10px 12px;
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-            transition: all 0.2s ease;
-        }
-
-        .input-label:hover {
-            border-color: #4a5568;
-            box-shadow: 0 2px 8px rgba(74, 85, 104, 0.1);
-        }
-
-        .input-label label {
-            font-size: 14px;
-            font-weight: 500;
-            color: #555;
-        }
-
-        .input-label input[type="number"] {
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: all 0.2s ease;
-            background: #fafafa;
-        }
-
-        .input-label input[type="number"]:focus {
-            outline: none;
-            border-color: #4a5568;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
-        }
-
-        /* Buttons */
-        .buttons-container {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            padding: 16px 20px;
-            background: #f8f9fa;
-            border-radius: 0 0 16px 16px;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .buttons-container button {
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: 500;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            min-width: 140px;
-        }
-
-        .buttons-container button:first-child {
-            background: white;
-            color: #4a5568;
-            border: 2px solid #4a5568;
-        }
-
-        .buttons-container button:first-child:hover {
-            background: #4a5568;
-            color: white;
-            box-shadow: 0 4px 12px rgba(74, 85, 104, 0.3);
-        }
-
-        .buttons-container button:last-child {
-            background: #2d3748;
-            color: white;
-            border: none;
-        }
-
-        .buttons-container button:last-child:hover {
-            box-shadow: 0 4px 12px rgba(74, 85, 104, 0.4);
-        }
-
-        .buttons-container button:active {
-            transform: translateY(0);
-        }
-
-        /* Animation for modal entrance */
-        @keyframes modalSlideIn {
-            from {
+    const addStyles = () => {
+        GM_addStyle(`
+            .modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background-color: rgba(0, 0, 0, 0.6);
+                z-index: 9998;
+                transition: background-color 0.3s ease;
+                backdrop-filter: blur(4px);
+            }
+            .modal {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 480px;
+                max-height: 85vh;
+                background: #ffffff;
+                border-radius: 16px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                z-index: 9999;
                 opacity: 0;
-                transform: translate(-50%, -48%) scale(0.95);
+                transition: opacity 0.3s ease, transform 0.3s ease;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
             }
-            to {
-                opacity: 1;
-                transform: translate(-50%, -50%) scale(1);
+            .modal-header {
+                background: #2d3748;
+                padding: 16px 20px;
+                color: white;
+                border-radius: 16px 16px 0 0;
             }
-        }
+            .modal-title {
+                margin: 0;
+                font-size: 18px;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+            }
+            .modal-content {
+                padding: 5px;
+                overflow-y: auto;
+                flex: 1;
+            }
+            .modal-content::-webkit-scrollbar {
+                width: 8px;
+            }
+            .modal-content::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 10px;
+            }
+            .modal-content::-webkit-scrollbar-thumb {
+                background: #888;
+                border-radius: 10px;
+            }
+            .modal-content::-webkit-scrollbar-thumb:hover {
+                background: #555;
+            }
+            .checkbox-label {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 4px;
+                padding: 5px 12px;
+                background: white;
+                border-radius: 8px;
+                transition: all 0.2s ease;
+                cursor: pointer;
+                border: 1px solid #e0e0e0;
+            }
+            .checkbox-label:hover {
+                background: #f8f9fa;
+                border-color: #4a5568;
+                box-shadow: 0 2px 8px rgba(74, 85, 104, 0.1);
+            }
+            .checkbox-label input[type="checkbox"] {
+                margin: 0;
+                flex-shrink: 0;
+                width: 18px;
+                height: 18px;
+                cursor: pointer;
+                accent-color: #4a5568;
+            }
+            .checkbox-label span {
+                font-size: 14px;
+                color: #333;
+                user-select: none;
+            }
+            .buttons-section {
+                margin-top: 3px;
+                margin-bottom: 3px;
+                padding: 8px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+            }
+            .buttons-section.hidden {
+                display: none;
+            }
+            .buttons-section h4 {
+                margin: 0 0 6px 0;
+                font-weight: 600;
+                font-size: 15px;
+                color: #4a5568;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .buttons-section .checkbox-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                gap: 4px;
+            }
+            .buttons-section .checkbox-label {
+                margin-bottom: 0;
+                padding: 5px 8px;
+                font-size: 13px;
+            }
+            .input-label {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                margin-bottom: 4px;
+                padding: 10px 12px;
+                background: white;
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+                transition: all 0.2s ease;
+            }
+            .input-label:hover {
+                border-color: #4a5568;
+                box-shadow: 0 2px 8px rgba(74, 85, 104, 0.1);
+            }
+            .input-label label {
+                font-size: 14px;
+                font-weight: 500;
+                color: #555;
+            }
+            .input-label input[type="number"] {
+                padding: 8px 10px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                font-size: 14px;
+                transition: all 0.2s ease;
+                background: #fafafa;
+            }
+            .input-label input[type="number"]:focus {
+                outline: none;
+                border-color: #4a5568;
+                background: white;
+                box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
+            }
+            .buttons-container {
+                display: flex;
+                gap: 12px;
+                justify-content: center;
+                padding: 16px 20px;
+                background: #f8f9fa;
+                border-radius: 0 0 16px 16px;
+                border-top: 1px solid #e0e0e0;
+            }
+            .buttons-container button {
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 500;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                min-width: 140px;
+            }
+            .buttons-container button:first-child {
+                background: white;
+                color: #4a5568;
+                border: 2px solid #4a5568;
+            }
+            .buttons-container button:first-child:hover {
+                background: #4a5568;
+                color: white;
+                box-shadow: 0 4px 12px rgba(74, 85, 104, 0.3);
+            }
+            .buttons-container button:last-child {
+                background: #2d3748;
+                color: white;
+                border: none;
+            }
+            .buttons-container button:last-child:hover {
+                box-shadow: 0 4px 12px rgba(74, 85, 104, 0.4);
+            }
+            .buttons-container button:active {
+                transform: translateY(0);
+            }
+            @keyframes modalSlideIn {
+                from {
+                    opacity: 0;
+                    transform: translate(-50%, -48%) scale(0.95);
+                }
+                to {
+                    opacity: 1;
+                    transform: translate(-50%, -50%) scale(1);
+                }
+            }
+            .modal.show {
+                animation: modalSlideIn 0.3s ease forwards;
+            }
+        `);
+    };
 
-        .modal.show {
-            animation: modalSlideIn 0.3s ease forwards;
-        }
-    `);
+    // ============ DOM CREATION ============
+    const createOverlay = () => {
+        const overlay = document.createElement("div");
+        overlay.className = "modal-overlay";
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0)";
+        setTimeout(() => {
+            overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+        }, 50);
+        return overlay;
+    };
 
-    // Create overlay with fade-in effect
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.style.backgroundColor = "rgba(0, 0, 0, 0)";
-    setTimeout(() => {
-        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-    }, 50);
+    const createModal = () => {
+        const modal = document.createElement("div");
+        modal.className = "modal";
+        setTimeout(() => {
+            modal.classList.add("show");
+        }, 50);
+        return modal;
+    };
 
-    // Create modal
-    const modal = document.createElement("div");
-    modal.className = "modal";
-    setTimeout(() => {
-        modal.classList.add("show");
-    }, 50);
+    const createHeader = () => {
+        const header = document.createElement("div");
+        header.className = "modal-header";
+        const title = document.createElement("h3");
+        title.innerText = "Configuration Settings";
+        title.className = "modal-title";
+        header.appendChild(title);
+        return header;
+    };
 
-    // Create header
-    const header = document.createElement("div");
-    header.className = "modal-header";
+    // ============ ELEMENT BUILDERS ============
+    const createCheckbox = (key, option) => {
+        const label = document.createElement("label");
+        label.className = "checkbox-label";
 
-    const title = document.createElement("h3");
-    title.innerText = "Configuration Settings";
-    title.className = "modal-title";
-    header.appendChild(title);
-    modal.appendChild(header);
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = GM_getValue(key, option.default);
 
-    // Create content area
-    const content = document.createElement("div");
-    content.className = "modal-content";
+        checkbox.addEventListener("change", () => {
+            checkbox.checked === option.default ? GM_deleteValue(key) : GM_setValue(key, checkbox.checked);
+            if (key === "improvements") updateDependentVisibility();
+        });
 
-    // Add regular checkboxes and input fields
-    let castButtonsEnabledCheckbox = null;
+        const span = document.createElement("span");
+        span.textContent = option.label;
 
-    Object.entries(configurationOptions).forEach(([key, option]) => {
-        if (typeof option.default === "boolean") {
+        label.append(checkbox, span);
+        if (option.category) label.dataset.category = option.category;
+
+        return { label, checkbox };
+    };
+
+    const createNumberInput = (key, option) => {
+        const container = document.createElement("div");
+        container.className = "input-label";
+
+        const label = document.createElement("label");
+        label.textContent = option.label;
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = GM_getValue(key, option.default);
+
+        input.addEventListener("change", () => {
+            const value = input.value.trim();
+            if (value === "") {
+                GM_deleteValue(key);
+                input.value = option.default;
+            } else {
+                const parsed = parseInt(value, 10);
+                if (!isNaN(parsed)) GM_setValue(key, parsed);
+            }
+        });
+
+        container.append(label, input);
+        if (option.category) container.dataset.category = option.category;
+
+        return container;
+    };
+
+    const createButtonsGrid = (entries, valuePrefix = "") => {
+        const grid = document.createElement("div");
+        grid.className = "checkbox-grid";
+
+        entries.forEach(([itemKey, itemOption]) => {
+            if (itemKey === "category") return;
+
             const label = document.createElement("label");
             label.className = "checkbox-label";
 
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
-            checkbox.checked = GM_getValue(key, option.default);
+            const gmKey = valuePrefix ? `${valuePrefix}_${itemKey}` : itemKey;
+            const defaultValue = itemOption.default ?? itemOption.enabled ?? false;
+            checkbox.checked = GM_getValue(gmKey, defaultValue);
 
             checkbox.addEventListener("change", () => {
-                if (checkbox.checked === option.default) {
-                    GM_deleteValue(key);
-                } else {
-                    GM_setValue(key, checkbox.checked);
-                }
+                checkbox.checked === defaultValue ? GM_deleteValue(gmKey) : GM_setValue(gmKey, checkbox.checked);
             });
 
-            const textSpan = document.createElement("span");
-            textSpan.textContent = option.label;
+            const span = document.createElement("span");
+            span.textContent = itemOption.label || itemOption.text;
 
-            label.appendChild(checkbox);
-            label.appendChild(textSpan);
+            label.append(checkbox, span);
+            grid.appendChild(label);
+        });
+
+        return grid;
+    };
+
+    // ============ INITIALIZATION ============
+    addStyles();
+
+    const overlay = createOverlay();
+    const modal = createModal();
+    modal.appendChild(createHeader());
+
+    const content = document.createElement("div");
+    content.className = "modal-content";
+
+    let castButtonsEnabledCheckbox = null;
+    let improvementsCheckbox = null;
+    let updateCastButtonsVis = null;
+
+    // ============ VISIBILITY MANAGEMENT ============
+    const updateDependentVisibility = () => {
+        const enabled = improvementsCheckbox ? improvementsCheckbox.checked : true;
+        modal.querySelectorAll('[data-category="improvements"]').forEach((el) => {
+            if (el.classList?.contains("buttons-section")) {
+                el.classList.toggle("hidden", !enabled);
+            } else {
+                el.style.display = enabled ? "" : "none";
+            }
+        });
+        // Update cast buttons visibility after general update (it has special two-condition logic)
+        if (updateCastButtonsVis) updateCastButtonsVis();
+    };
+
+    // ============ BUILD CONTENT ============
+    Object.entries(configurationOptions).forEach(([key, option]) => {
+        if (typeof option.default === "boolean") {
+            const { label, checkbox } = createCheckbox(key, option);
             content.appendChild(label);
 
-            // Store reference to castButtonsEnabled checkbox
-            if (key === "castButtonsEnabled") {
-                castButtonsEnabledCheckbox = checkbox;
-            }
+            if (key === "castButtonsEnabled") castButtonsEnabledCheckbox = checkbox;
+            if (key === "improvements") improvementsCheckbox = checkbox;
         } else if (typeof option.default === "number") {
-            const container = document.createElement("div");
-            container.className = "input-label";
-
-            const label = document.createElement("label");
-            label.textContent = option.label;
-
-            const input = document.createElement("input");
-            input.type = "number";
-            input.value = GM_getValue(key, option.default);
-
-            input.addEventListener("change", () => {
-                const value = input.value.trim();
-                if (value === "") {
-                    GM_deleteValue(key);
-                    input.value = option.default;
-                } else {
-                    const parsedValue = parseInt(value, 10);
-                    if (!isNaN(parsedValue)) {
-                        GM_setValue(key, parsedValue);
-                    }
-                }
-            });
-
-            container.appendChild(label);
-            container.appendChild(input);
-            content.appendChild(container);
+            content.appendChild(createNumberInput(key, option));
         } else if (key === "searchGroups") {
-            // Search Groups section - similar to castButtons
-            const searchGroupsSection = document.createElement("div");
-            searchGroupsSection.className = "buttons-section";
+            const section = document.createElement("div");
+            section.className = "buttons-section";
 
-            const searchGroupsTitle = document.createElement("h4");
-            searchGroupsTitle.textContent = "Searches";
-            searchGroupsSection.appendChild(searchGroupsTitle);
+            const title = document.createElement("h4");
+            title.textContent = "Searches";
+            section.appendChild(title);
 
-            const searchGroupsGrid = document.createElement("div");
-            searchGroupsGrid.className = "checkbox-grid";
+            const grid = createButtonsGrid(Object.entries(option));
+            section.appendChild(grid);
 
-            // Add each searchGroup option
-            Object.entries(option).forEach(([groupKey, groupOption]) => {
-                const label = document.createElement("label");
-                label.className = "checkbox-label";
+            if (option.category) {
+                section.dataset.category = option.category;
+            }
 
-                const checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.checked = GM_getValue(groupKey, groupOption.default);
-
-                checkbox.addEventListener("change", () => {
-                    if (checkbox.checked === groupOption.default) {
-                        GM_deleteValue(groupKey);
-                    } else {
-                        GM_setValue(groupKey, checkbox.checked);
-                    }
-                });
-
-                const textSpan = document.createElement("span");
-                textSpan.textContent = groupOption.label;
-
-                label.appendChild(checkbox);
-                label.appendChild(textSpan);
-                searchGroupsGrid.appendChild(label);
-            });
-
-            searchGroupsSection.appendChild(searchGroupsGrid);
-            content.appendChild(searchGroupsSection);
+            content.appendChild(section);
         } else if (key === "castButtons") {
-            // Cast buttons section
-            const castButtonsSection = document.createElement("div");
-            castButtonsSection.className = "buttons-section";
+            const section = document.createElement("div");
+            section.className = "buttons-section";
 
-            const castButtonsTitle = document.createElement("h4");
-            castButtonsTitle.textContent = "Cast Image Search Buttons";
-            castButtonsSection.appendChild(castButtonsTitle);
+            const title = document.createElement("h4");
+            title.textContent = "Cast Image Search Buttons";
+            section.appendChild(title);
 
-            const castButtonsGrid = document.createElement("div");
-            castButtonsGrid.className = "checkbox-grid";
+            const grid = createButtonsGrid(Object.entries(option), "castButton");
+            section.appendChild(grid);
 
-            Object.entries(option).forEach(([btnKey, buttonDef]) => {
-                const label = document.createElement("label");
-                label.className = "checkbox-label";
+            if (option.category) {
+                section.dataset.category = option.category;
+            }
 
-                const checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.checked = GM_getValue(`castButton_${btnKey}`, buttonDef.enabled);
+            content.appendChild(section);
 
-                checkbox.addEventListener("change", () => {
-                    if (checkbox.checked === buttonDef.enabled) {
-                        GM_deleteValue(`castButton_${btnKey}`);
-                    } else {
-                        GM_setValue(`castButton_${btnKey}`, checkbox.checked);
-                    }
-                });
-
-                const textSpan = document.createElement("span");
-                textSpan.textContent = buttonDef.text;
-
-                label.appendChild(checkbox);
-                label.appendChild(textSpan);
-                castButtonsGrid.appendChild(label);
-            });
-
-            castButtonsSection.appendChild(castButtonsGrid);
-            content.appendChild(castButtonsSection);
-
-            // Function to update cast buttons visibility based on castButtonsEnabled checkbox
-            const updateCastButtonsVisibility = () => {
-                if (castButtonsEnabledCheckbox && !castButtonsEnabledCheckbox.checked) {
-                    castButtonsSection.classList.add("hidden");
-                } else {
-                    castButtonsSection.classList.remove("hidden");
-                }
+            // Update visibility based on dependencies
+            updateCastButtonsVis = () => {
+                const improvementsOn = improvementsCheckbox?.checked ?? true;
+                const masterOn = castButtonsEnabledCheckbox?.checked ?? true;
+                section.classList.toggle("hidden", !(improvementsOn && masterOn));
             };
 
-            // Initial visibility check
-            updateCastButtonsVisibility();
-
-            // Listen for changes on castButtonsEnabled checkbox
-            if (castButtonsEnabledCheckbox) {
-                castButtonsEnabledCheckbox.addEventListener("change", updateCastButtonsVisibility);
-            }
+            updateCastButtonsVis();
+            if (castButtonsEnabledCheckbox) castButtonsEnabledCheckbox.addEventListener("change", updateCastButtonsVis);
+            if (improvementsCheckbox) improvementsCheckbox.addEventListener("change", updateCastButtonsVis);
         }
     });
 
     modal.appendChild(content);
+    updateDependentVisibility();
 
-    // Create buttons container
+    // ============ BUTTONS ============
     const buttonsContainer = document.createElement("div");
     buttonsContainer.className = "buttons-container";
 
-    // Reset button
-    const defaultButton = document.createElement("button");
-    defaultButton.innerText = "Reset to Defaults";
-    defaultButton.className = "smallbutton";
-
-    defaultButton.addEventListener("click", () => {
+    const resetButton = document.createElement("button");
+    resetButton.innerText = "Reset to Defaults";
+    resetButton.className = "smallbutton";
+    resetButton.addEventListener("click", () => {
         Object.keys(configurationOptions).forEach((key) => {
-            if (key !== "castButtons") {
-                GM_deleteValue(key);
-            }
+            if (key !== "castButtons") GM_deleteValue(key);
         });
-
         if (configurationOptions.castButtons) {
             Object.keys(configurationOptions.castButtons).forEach((btnKey) => {
                 GM_deleteValue(`castButton_${btnKey}`);
             });
         }
-
         document.body.removeChild(overlay);
         document.body.removeChild(modal);
         location.reload();
     });
 
-    // Apply button
-    const closeButton = document.createElement("button");
-    closeButton.innerText = "Apply & Reload";
-    closeButton.className = "smallbutton";
-
-    closeButton.addEventListener("click", () => {
+    const applyButton = document.createElement("button");
+    applyButton.innerText = "Apply & Reload";
+    applyButton.className = "smallbutton";
+    applyButton.addEventListener("click", () => {
         document.body.removeChild(overlay);
         document.body.removeChild(modal);
         location.reload();
     });
 
-    buttonsContainer.appendChild(defaultButton);
-    buttonsContainer.appendChild(closeButton);
+    buttonsContainer.append(resetButton, applyButton);
     modal.appendChild(buttonsContainer);
 
-    // Add to DOM
-    document.body.appendChild(overlay);
-    document.body.appendChild(modal);
-
-    // Close on overlay click
+    // ============ MOUNT & EVENTS ============
+    document.body.append(overlay, modal);
     overlay.addEventListener("click", () => {
         document.body.removeChild(overlay);
         document.body.removeChild(modal);

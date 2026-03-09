@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260214
+// @version        20260309
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -316,7 +316,6 @@ function addImprovementsCss() {
             .added-links {
                 margin-bottom: 5px;
             }
-
             .added-links a {
                     background: #667eea;
                     color: white;
@@ -2043,11 +2042,23 @@ async function addVideoThumbnails() {
             let linkNodeList = document.querySelectorAll("a");
             let targetImageUrl;
 
+            // find imagetwist page URL for direct page scraping
+            const avidLower = avid.toLowerCase();
+            let imageTwistPageUrl = [...linkNodeList]
+                .reverse()
+                .find((a) => a.href.toLowerCase().includes(avidLower) && a.href.includes("imagetwist.com"))
+                ?.href;
+            // extract actual imagetwist URL from JavLibrary redirect wrapper
+            if (imageTwistPageUrl) {
+                const redirectMatch = imageTwistPageUrl.match(/[?&]url=([^&]+)/);
+                if (redirectMatch) imageTwistPageUrl = decodeURIComponent(redirectMatch[1]);
+            }
+
             // search in reverse order as the most recent comments are more likely to contain the correct image link and last one more relevant for VR videos
             for (let i = linkNodeList.length - 1; i >= 0; i--) {
                 let linkNode = linkNodeList[i];
                 if (
-                    linkNode.href.toLowerCase().includes(avid.toLowerCase()) &&
+                    linkNode.href.toLowerCase().includes(avidLower) &&
                     (linkNode.href.includes("pixhost.to") ||
                         linkNode.href.includes("imagetwist.com") ||
                         linkNode.href.includes("imagehaha.com"))
@@ -2069,43 +2080,49 @@ async function addVideoThumbnails() {
                 if (/pixhost/gi.test(targetImageUrl))
                     targetImageUrl = targetImageUrl.replace(/\/t(\d+)\.pixhost\.to\//, "/img$1.pixhost.to/");
 
-                return fetchImageAsBlob(targetImageUrl)
-                    .then((blob) => {
-                        if (blob) {
-                            if (blob.size < 20 * 1024) {
-                                throw new Error("wrong image as its smaller than 20 KB");
-                            }
-                            return URL.createObjectURL(blob);
-                        } else {
-                            throw new Error('"Picture removed" placeholder or failed to load');
-                        }
-                    })
-                    .catch((error) => {
-                        console.log("The image URL obtained has been removed or failed to load: " + error.message);
-                        return Promise.resolve();
-                    });
+                const blobUrl = await fetchValidatedImage(targetImageUrl);
+                if (blobUrl) return blobUrl;
             }
+
+            // if thumbnail failed or missing, fetch ImageTwist page to extract the direct image URL
+            if (imageTwistPageUrl) {
+                const directUrl = await fetchImageUrlFromImageTwistPage(imageTwistPageUrl);
+                if (directUrl) {
+                    const blobUrl = await fetchValidatedImage(directUrl);
+                    if (blobUrl) return blobUrl;
+                }
+            }
+
             return null;
         }
 
-        async function fetchImageAsBlob(url) {
-            return new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: "GET",
-                    url: url,
-                    responseType: "blob",
-                    onload: function (response) {
-                        if (response.status === 200) {
-                            resolve(response.response);
-                        } else {
-                            reject(new Error(`Failed to fetch image: ${response.status}`));
-                        }
-                    },
-                    onerror: function (error) {
-                        reject(error);
-                    },
+        async function fetchImageUrlFromImageTwistPage(pageUrl) {
+            try {
+                const result = await xmlhttpRequest(pageUrl);
+                if (!result.isSuccess) return null;
+                const match = result.responseText.match(/https?:\/\/[a-z]*\d+\.imagetwist\.com\/i\/\d+\/[^\s"'<>]+/i);
+                return match ? match[0] : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function fetchValidatedImage(url) {
+            try {
+                const blob = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: "GET",
+                        url: url,
+                        responseType: "blob",
+                        onload: (response) => (response.status === 200 ? resolve(response.response) : reject()),
+                        onerror: reject,
+                    });
                 });
-            });
+                if (!blob || blob.size < 20 * 1024) return undefined;
+                return URL.createObjectURL(blob);
+            } catch (e) {
+                return undefined;
+            }
         }
 
         try {

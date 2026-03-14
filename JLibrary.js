@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260309
+// @version        20260314
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -2046,8 +2046,7 @@ async function addVideoThumbnails() {
             const avidLower = avid.toLowerCase();
             let imageTwistPageUrl = [...linkNodeList]
                 .reverse()
-                .find((a) => a.href.toLowerCase().includes(avidLower) && a.href.includes("imagetwist.com"))
-                ?.href;
+                .find((a) => a.href.toLowerCase().includes(avidLower) && a.href.includes("imagetwist.com"))?.href;
             // extract actual imagetwist URL from JavLibrary redirect wrapper
             if (imageTwistPageUrl) {
                 const redirectMatch = imageTwistPageUrl.match(/[?&]url=([^&]+)/);
@@ -2058,10 +2057,9 @@ async function addVideoThumbnails() {
             for (let i = linkNodeList.length - 1; i >= 0; i--) {
                 let linkNode = linkNodeList[i];
                 if (
-                    linkNode.href.toLowerCase().includes(avidLower) &&
-                    (linkNode.href.includes("pixhost.to") ||
-                        linkNode.href.includes("imagetwist.com") ||
-                        linkNode.href.includes("imagehaha.com"))
+                    linkNode.href.includes("pixhost.to") ||
+                    linkNode.href.includes("imagetwist.com") ||
+                    linkNode.href.includes("imagehaha.com")
                 ) {
                     targetImageUrl = linkNode.querySelector("img")?.src;
                     if (targetImageUrl) {

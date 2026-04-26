@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260314
+// @version        20260426
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -76,11 +76,10 @@ const configurationOptions = {
         },
         avdbs: { text: "AVDBS", link: "https://www.avdbs.com/menu/search.php?seq=42978591&tab=1&kwd=", enabled: true },
         v2ph: { text: "V2PH", link: "https://www.v2ph.com/search/?q=", enabled: true },
-        kawaiithong: { text: "KawaiiThong", link: "https://kawaiithong.com/search_kawaii_pics/", enabled: true },
+        // kawaiithong: { text: "KawaiiThong", link: "https://kawaiithong.com/search_kawaii_pics/", enabled: true },
         jjgirls: { text: "JJGirls", link: "https://jjgirls.com/match.php?model=", enabled: true },
         yandex: { text: "Yandex", link: "https://yandex.com/images/search?text=", enabled: true },
         xslist: { text: "XsList", link: "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ", enabled: true },
-        beautimetas: { text: "BeautiMetas", link: "https://beautifulmetas.com/search_result/", enabled: true },
     },
     modernLinkStyles: {
         label: "Modern link styling for search links and buttons",
@@ -1412,10 +1411,17 @@ async function addImprovements() {
         // Thumbnails 2
         if (GM_getValue("searchGroupThumbnails2", configurationOptions.searchGroups.searchGroupThumbnails2.default)) {
             addSearchLinkAndOpenAllButton(
+                "JAV-Load | Thumbnails",
+                "https://jav-load.com/?s=" + avid,
+                "Search-Thumbnails-2",
+                true,
+                contentTd,
+            );
+            addSearchLinkAndOpenAllButton(
                 "Video-JAV | Thumbnails",
                 "http://video-jav.net/?s=" + avid,
                 "Search-Thumbnails-2",
-                true,
+                false,
                 contentTd,
             );
             addSearchLinkAndOpenAllButton(
@@ -1701,9 +1707,10 @@ async function addImprovements() {
         span.className = "find-cast";
         castContainer.appendChild(span);
 
-        function addButton(text, link) {
+        function addButton(text, link, title = "") {
             const button = document.createElement("button");
             button.textContent = text;
+            button.title = title;
             button.className = "smallbutton smallbutton-mod";
             button.style = "width: unset";
             button.onclick = function () {
@@ -1718,8 +1725,10 @@ async function addImprovements() {
             return;
         }
 
-        addButton("Find cast with facial recognition", "https://xslist.org/en/searchByImage");
-        addButton("Cast by scene", "https://avwikidb.com/en/work/" + avid);
+        addButton("cast by face", "https://xslist.org/en/searchByImage");
+        addButton("cast by face 2", "https://www.av-search.online/", "Looks defect but works");
+        addButton("cast by face 3", "https://ggjav.com/ja/main/recognize_pornstar");
+        addButton("cast by scene", "https://avwikidb.com/en/work/" + avid);
     }
 
     async function makeFavoriteCastVisible() {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260426
+// @version        20260503
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -46,14 +46,63 @@
 // Config/Requirements
 // =======================================================================================
 
+// bind preserves call site in browser console (wrapper functions would point here instead)
+const log = GM_getValue("authorsMode", false) ? console.log.bind(console) : () => {};
+
+const NEWS_VERSION = "20260503";
+
+const newsEntries = [
+    {
+        version: NEWS_VERSION,
+        changes: [
+            "Major update: Over 90% of the code was rewritten or restructured, bringing significant improvements in performance, maintainability and features.",
+            "Redesigned layout: more compact, cleaner and more pleasing.",
+            "Color themes in config: Purple/Pink and Dark Blue.",
+            {
+                text: "Added two new facial recognition sites to help find actors.",
+                detail: "The original site is still there but has been broken for a while. The second site works best now — its page may look broken, but it functions correctly. The third is just an extra option.",
+            },
+            {
+                text: "Configuration menu: open via Tampermonkey → 'Configuration', press C, or use the config button (bottom right) on the details page.",
+            },
+            {
+                text: '"Search all" for Streams, Thumbnails 2 and GDrive now checks sites in the background instead of opening tabs.',
+                detail: "Links are color-coded: green = found, red = not found, orange = timeout/error, gray = Cloudflare (visit manually). Links remain clickable regardless of result.",
+            },
+            {
+                text: "Background requests (thumbnail search, prefetch) now run in parallel > results appear faster.",
+                detail: "Tampermonkey serialized background requests in recent Chrome MV3 versions. A fix from the Tampermonkey team is now included. Requires Tampermonkey 5.3.2 or newer.",
+            },
+            "Improved inline thumbnails: added 3xPlanet and removed it from Thumbnails 2 group.",
+            "Tabs opened by the script no longer steal focus for Rapidgator.",
+            "Removed inaccessible image sources (KawaiiThong, BeautiMetas).",
+        ],
+        feedback: {
+            text: "Found a bug, have a suggestion, or know a link that should be included/removed? Let me know at",
+            url: "https://greasyfork.org/en/scripts/502894-javlibrary-improvements/feedback",
+        },
+    },
+];
+
 let avidCopiedToClipboard = false;
 const url = window.location.href;
+const hostname = window.location.hostname;
+const isJavLibrary = hostname.endsWith("javlibrary.com") || hostname === "x75p.com" || hostname.endsWith("y78k.com");
 const originalDocumentTitle = document.title;
 let avid = null;
 const configurationOptions = {
     improvements: {
         label: "Layout and functional improvements",
         default: true,
+    },
+    theme: {
+        label: "Color theme",
+        default: "purplePink",
+        options: {
+            purplePink: "Purple / Pink",
+            darkBlue: "Dark Blue / Gray",
+        },
+        category: "improvements",
     },
     searchByIDFilter: {
         label: "Filter Blu-ray editions and mismatched AVIDs from search results",
@@ -81,13 +130,8 @@ const configurationOptions = {
         yandex: { text: "Yandex", link: "https://yandex.com/images/search?text=", enabled: true },
         xslist: { text: "XsList", link: "https://duckduckgo.com/?iar=images&iax=images&ia=images&q=site:xslist.org ", enabled: true },
     },
-    modernLinkStyles: {
-        label: "Modern link styling for search links and buttons",
-        default: true,
-        category: "improvements",
-    },
     castSearchButtonEnabled: {
-        label: "Enable cast search button (facial recognition and cast by scene)",
+        label: "Enable cast search buttons (facial recognition and cast by scene)",
         default: true,
         category: "improvements",
     },
@@ -126,20 +170,198 @@ const configurationOptions = {
             default: true,
         },
     },
+    prefetchOnLoad: {
+        category: "improvements",
+        prefetchOnLoadThumbnails2: {
+            label: "Thumbnails 2",
+            default: false,
+        },
+        prefetchOnLoadGDrive: {
+            label: "GDrive",
+            default: false,
+        },
+        prefetchOnLoadStream: {
+            label: "Stream",
+            default: false,
+        },
+    },
+    prefetchShowNotFound: {
+        label: "Keep buttons visible when Search All finds no content",
+        default: false,
+        category: "improvements",
+    },
+    videoThumbnails: {
+        label: "Display video preview/thumbnail images",
+        default: true,
+    },
+    configIcon: {
+        label: "Show configuration icon on details page",
+        default: true,
+    },
     externalSearchModeTimeout: {
         label: "Allowed execution time of Collect Rapidgator Link & Thumbnails Search (Milliseconds)",
         default: 8000,
         category: "improvements",
-    },
-    videoThumbnails: {
-        label: "Display video preview images",
-        default: true,
     },
     externalDataFetchTimeout: {
         label: "Timeout when retrieving data from other websites, mainly for video thumbnails (Milliseconds)",
         default: 5000,
     },
 };
+
+// Apply GM_xmlhttpRequest wrapper to fix redirect handling in background requests (thumbnail search, prefetch) without affecting page scripts. Requires Tampermonkey 5.3.2+ for redirect control support.
+(() => {
+    // https://github.com/Tampermonkey/tampermonkey/issues/2215
+    /* global GM_info, GM_xmlhttpRequest, GM */
+
+    const HAS_GM = typeof GM !== "undefined";
+    const NEW_GM = ((scope, GM) => {
+        // Check if running in Tampermonkey and if version supports redirect control
+        if (GM_info.scriptHandler !== "Tampermonkey" || compareVersions(GM_info.version, "5.3.2") < 0) return;
+
+        // Backup original functions
+        const GM_xmlhttpRequestOrig = GM_xmlhttpRequest;
+        const GM_xmlHttpRequestOrig = GM.xmlHttpRequest;
+
+        function compareVersions(v1, v2) {
+            const parts1 = v1.split(".").map(Number);
+            const parts2 = v2.split(".").map(Number);
+            const length = Math.max(parts1.length, parts2.length);
+
+            for (let i = 0; i < length; i++) {
+                const num1 = parts1[i] || 0;
+                const num2 = parts2[i] || 0;
+
+                if (num1 > num2) return 1;
+                if (num1 < num2) return -1;
+            }
+            return 0;
+        }
+
+        // Wrapper for GM_xmlhttpRequest
+        function GM_xmlhttpRequestWrapper(odetails) {
+            // If redirect is manually set, simply pass odetails to the original function
+            if (odetails.redirect !== undefined) {
+                return GM_xmlhttpRequestOrig(odetails);
+            }
+
+            // Warn if onprogress is used with settings incompatible with fetch mode used in background
+            if (odetails.onprogress || odetails.fetch === false) {
+                console.warn("Fetch mode does not support onprogress in the background.");
+            }
+
+            const { onload, onloadend, onerror, onabort, ontimeout, ...details } = odetails;
+
+            // Set redirect to manual and handle redirects
+            const handleRedirects = (initialDetails) => {
+                const request = GM_xmlhttpRequestOrig({
+                    ...initialDetails,
+                    redirect: "manual",
+                    onload: function (response) {
+                        if (response.status >= 300 && response.status < 400) {
+                            const m = response.responseHeaders.match(/Location:\s*(\S+)/i);
+                            // Follow redirect manually
+                            const redirectUrl = m && m[1];
+                            if (redirectUrl) {
+                                const absoluteUrl = new URL(redirectUrl, initialDetails.url).href;
+                                handleRedirects({ ...initialDetails, url: absoluteUrl });
+                                return;
+                            }
+                        }
+
+                        if (onload) onload.call(this, response);
+                        if (onloadend) onloadend.call(this, response);
+                    },
+                    onerror: function (response) {
+                        if (onerror) onerror.call(this, response);
+                        if (onloadend) onloadend.call(this, response);
+                    },
+                    onabort: function (response) {
+                        if (onabort) onabort.call(this, response);
+                        if (onloadend) onloadend.call(this, response);
+                    },
+                    ontimeout: function (response) {
+                        if (ontimeout) ontimeout.call(this, response);
+                        if (onloadend) onloadend.call(this, response);
+                    },
+                });
+                return request;
+            };
+
+            return handleRedirects(details);
+        }
+
+        // Wrapper for GM.xmlHttpRequest
+        function GM_xmlHttpRequestWrapper(odetails) {
+            let abort;
+
+            const p = new Promise((resolve, reject) => {
+                const { onload, ontimeout, onerror, ...send } = odetails;
+
+                send.onerror = function (r) {
+                    if (onerror) {
+                        resolve(r);
+                        onerror.call(this, r);
+                    } else {
+                        reject(r);
+                    }
+                };
+                send.ontimeout = function (r) {
+                    if (ontimeout) {
+                        // See comment above
+                        resolve(r);
+                        ontimeout.call(this, r);
+                    } else {
+                        reject(r);
+                    }
+                };
+                send.onload = function (r) {
+                    resolve(r);
+                    if (onload) onload.call(this, r);
+                };
+
+                const a = GM_xmlhttpRequestWrapper(send).abort;
+                if (abort === true) {
+                    a();
+                } else {
+                    abort = a;
+                }
+            });
+
+            p.abort = () => {
+                if (typeof abort === "function") {
+                    abort();
+                } else {
+                    abort = true;
+                }
+            };
+
+            return p;
+        }
+
+        // Export wrappers
+        GM_xmlhttpRequest = GM_xmlhttpRequestWrapper;
+        scope.GM_xmlhttpRequestOrig = GM_xmlhttpRequestOrig;
+
+        const gopd = Object.getOwnPropertyDescriptor(GM, "xmlHttpRequest");
+        if (gopd && gopd.configurable === false) {
+            return {
+                __proto__: GM,
+                xmlHttpRequest: GM_xmlHttpRequestWrapper,
+                xmlHttpRequestOrig: GM_xmlHttpRequestOrig,
+            };
+        } else {
+            GM.xmlHttpRequest = GM_xmlHttpRequestWrapper;
+            GM.xmlHttpRequestOrig = GM_xmlHttpRequestOrig;
+        }
+    })(this, HAS_GM ? GM : {});
+
+    if (HAS_GM && NEW_GM) GM = NEW_GM;
+})();
+
+// =======================================================================================
+// Helper functions
+// =======================================================================================
 
 async function getTitleElement() {
     return await waitForElement("#video_id > table > tbody > tr > td.text");
@@ -151,7 +373,7 @@ async function getAvid() {
             return null;
         }
 
-        const textContent = titleElement?.textContent;
+        const textContent = titleElement.textContent;
         if (textContent) {
             const match = textContent.match(/^(\S+)/);
             avid = match ? match[1] : textContent;
@@ -192,14 +414,16 @@ let nonFavoriteImage = createBase64Svg("lightgray");
  */
 function waitForElement(selector, index = 0, timeoutMs = 0) {
     return new Promise((resolve) => {
-        if (selector && document.querySelector(selector) && document.querySelectorAll(selector)[index]) {
-            return resolve(document.querySelectorAll(selector)[index]);
+        if (selector) {
+            const initial = document.querySelectorAll(selector);
+            if (initial[index]) return resolve(initial[index]);
         }
 
         const observer = new MutationObserver(() => {
-            if (selector && document.querySelectorAll(selector) && document.querySelectorAll(selector)[index]) {
+            const elements = document.querySelectorAll(selector);
+            if (elements[index]) {
                 if (timeoutId) clearTimeout(timeoutId);
-                resolve(document.querySelectorAll(selector)[index]);
+                resolve(elements[index]);
                 observer.disconnect();
             }
         });
@@ -219,6 +443,67 @@ function waitForElement(selector, index = 0, timeoutMs = 0) {
     });
 }
 
+// Finds all video page links in a document that match the given AVID.
+// Works for both live documents and DOMParser-parsed documents (background fetch).
+// Returns original-case absolute URLs, deduplicated.
+function findAllVideoUrlsInDoc(doc, avid, baseUrl) {
+    const lower = avid.toLowerCase();
+    const baseDomain = new URL(baseUrl).hostname;
+    const seen = new Set();
+    const results = [];
+    const anchors = doc.querySelectorAll("a[href]");
+    // devLog(`[findAllVideoUrlsInDoc] avid="${avid}" baseUrl="${baseUrl}" anchors=${anchors.length}`);
+
+    for (const a of anchors) {
+        let resolved;
+        try {
+            // turn the href into a full absolute URL, using baseUrl as fallback for relative paths
+            const u = new URL(a.getAttribute("href"), baseUrl);
+            u.hash = ""; // strip fragments like /#more so they don't create duplicates
+            resolved = u.href;
+        } catch {
+            console.warn(`[findAllVideoUrlsInDoc] invalid href skipped: "${a.getAttribute("href")}"`);
+            continue;
+        }
+
+        // ignore links to other domains (ads, cross-site references)
+        if (new URL(resolved).hostname !== baseDomain) continue;
+
+        const normalized = resolved.toLowerCase();
+
+        // match by href (URL contains AVID) or title attribute — but never search/listing pages
+        const titleMatch = (a.getAttribute("title") || "").toLowerCase().includes(lower);
+        const hrefMatch = normalized.includes(lower) && !/[?&]s=/.test(normalized) && !/\/search\//.test(normalized);
+
+        if ((hrefMatch || titleMatch) && !seen.has(normalized)) {
+            log(`[findAllVideoUrlsInDoc] match (${titleMatch ? "title" : "href"}): ${resolved}`);
+            seen.add(normalized);
+            results.push(resolved);
+        }
+    }
+    return results;
+}
+
+// Multiple tabs can be opened simultaneously, each writing their own content under a unique key.
+// After 100 ms all parallel tabs have written their data.
+// The tab with the alphabetically smallest key takes the lead:
+// it reads all keys, copies the combined content, and cleans up.
+// All other tabs just close without copying.
+function coordinateTabs(content) {
+    const myTabKey = "rgLinks_" + Date.now() + Math.random();
+    localStorage.setItem(myTabKey, content);
+    setTimeout(() => {
+        const keys = Object.keys(localStorage)
+            .filter((k) => k.startsWith("rgLinks_"))
+            .sort();
+        if (keys[0] === myTabKey) {
+            GM_setClipboard(keys.map((k) => localStorage.getItem(k)).join(""));
+            keys.forEach((k) => localStorage.removeItem(k));
+        }
+        window.close();
+    }, 100);
+}
+
 GM_registerMenuCommand("Configuration", configurationMenu, "c");
 
 // =======================================================================================
@@ -226,7 +511,31 @@ GM_registerMenuCommand("Configuration", configurationMenu, "c");
 // =======================================================================================
 
 function addImprovementsCss() {
+    const themes = {
+        purplePink: { accent: "#667eea", accentHover: "#667eea", accentVisited: "#667eea", btnBg: "#e8687a", btnBgHover: "#d0526a" },
+        darkBlue: { accent: "#012f61", accentHover: "#194676", accentVisited: "#012f61", btnBg: "#64748b", btnBgHover: "#475569" },
+    };
+    const themeKey = GM_getValue("theme", configurationOptions.theme.default);
+    const theme = themes[themeKey] ?? themes[configurationOptions.theme.default];
+    GM_addStyle(`:root {
+        --accent: ${theme.accent};
+        --accentHover: ${theme.accentHover};
+        --btn-bg: ${theme.btnBg};
+        --btn-bg-hover: ${theme.btnBgHover};
+        --accent-visited: ${theme.accentVisited};
+    }`);
+
     GM_addStyle(`
+        a {
+            color: var(--accent);
+        }
+        // a:hover:not(.videothumblist .videos .video a) {
+        //     color: #e0115f !important;
+        // }
+        a:visited {
+            color: #ababab;
+        }
+
         /* Saving space on top and left */
         #topmenu {
             z-index: 2;
@@ -269,14 +578,70 @@ function addImprovementsCss() {
             }
         }
 
-        /* search area layout (as also needed for no search results) */
+        /* search area layout */
+        #video_search tr {
+            display: flex;
+            align-items: stretch;
+        }
         #video_search td.text {
-            padding-left: 4px;
+            display: flex;
+            flex: 1;
+            flex-wrap: wrap;
+            align-items: center;
+            align-content: center;
+            gap: 3px 4px;
+            padding-left: 3px !important;
         }
-        #video_search td.text div:first-child {
-            margin-top: 0px;
+        #video_search td.text .added-links {
+            display: inline-flex;
+            width: auto;
+            height: auto;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 6px;
+            margin-bottom: 0;
         }
-        /* search links layout (as also needed for no search results) */
+        #video_search td.header {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: flex-start;
+            flex-shrink: 0;
+        }
+        #video_search td.header .search-group-actions {
+            margin-top: 4px;
+        }
+        #video_search td.text > .search-group {
+            flex-basis: 100%;
+        }
+        .search-group-row {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+        }
+        // .search-group {
+        //     display: flex;
+        //     flex-wrap: wrap;
+        //     gap: 4px 4px;
+        //     align-items: center;
+        //     flex: 1;
+        //     min-width: 0;
+        // }
+        .search-group-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 4px;
+            align-items: center;
+            flex: 1;
+            min-width: 0;
+        }
+        .search-group-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            align-items: flex-end;
+        }
+        /* search links layout */
         .added-links {
             width: 370px;
             height: 17px;
@@ -284,83 +649,90 @@ function addImprovementsCss() {
             align-items: center;
             justify-content: space-between;
         }
-        .added-links-separator {
-            margin-top: 10px;
-        }
-        .searches-label {
-            margin-left: 40px;
-            margin-top: 10px;
-            font-weight: bold;
-            display: inline-block;
-        }
         .added-links.Torrent {
             display: inline-block;
             width: auto;
-            margin-right: 4px;
-        }
-        .added-links.Torrent:not(.added-links-separator)::before {
-            content: " • ";
         }
 
         /* addSearchLinkAndOpenAllButton & addFaceRecognitionSearchToCasts */
         button.smallbutton-mod {
-            width: 170px;
+            margin-top: 0;
+            margin-bottom: 0;
+            padding: 2px 8px;
+            width: 90px;
+            height: 20px;
+            user-select: none;
+            background: var(--btn-bg);
+            color: white;
+            border: none;
+            border-radius: 3px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.15s ease;
+            white-space: nowrap;
         }
+        button.smallbutton-mod:hover {
+            background: var(--btn-bg-hover);
+        }
+        button.smallbutton-mod:active {
+            opacity: 0.85;
+        }
+        .added-links a,
+        a.customButton {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid #c8d0f0;
+            text-decoration: none;
+            border-radius: 3px;
+            transition: all 0.15s ease;
+            padding: 1px 8px;
+        }
+        .added-links a:hover,
+        a.customButton:hover {
+            background: var(--accentHover);
+            color: white;
+            border-color: var(--accent);
+        }       
+        .added-links a:visited:hover {
+            background: color-mix(in srgb, var(--accentHover) 10%, white);
+        }
+        .added-links a:visited {
+            color: #a0aec0;
+            border-color: #dde3ee;
+        }
+
+        /* prefetch result indicators */
+        .prefetch-found { color: #4ade80 !important; }
+        .prefetch-found:visited { color: #4ade80 !important; }
+        .prefetch-found:hover { color: white !important; background: #4ade80 !important; border-color: #4ade80 !important; }
+
+        .prefetch-not-found { color: #de4a4a !important; }
+        .prefetch-not-found:hover { color: white !important; background: #de4a4a !important; border-color: #de4a4a !important; }
+
+        .prefetch-error { border-style: dashed !important; border-color: orange !important; color: orange !important; position: relative; }
+        .prefetch-error:hover { color: white !important; background: orange !important; border-color: orange !important; }
+
+        .prefetch-cloudflare { border-style: dashed !important; border-color: #888 !important; color: #888 !important; position: relative; }
+        .prefetch-cloudflare:hover { color: white !important; background: #888 !important; border-color: #888 !important; }
+
+        .prefetch-tooltip {
+            position: absolute;
+            font-size: 10px;
+            padding: 4px;
+            border-radius: 4px;
+            top: -13px;
+            line-height: .75;
+            color: white;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+        .prefetch-error .prefetch-tooltip { background: orange; }
+        .prefetch-cloudflare .prefetch-tooltip { background: #888; }
     `);
-
-    // Modern link styles
-    const modernLinksEnabled = GM_getValue("modernLinkStyles", configurationOptions.modernLinkStyles.default);
-    if (modernLinksEnabled) {
-        GM_addStyle(`
-            .added-links {
-                margin-bottom: 5px;
-            }
-            .added-links a {
-                    background: #667eea;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 3px;
-                    transition: background 0.2s ease;
-                    padding: 2px 9px;
-            }
-            .added-links a:hover {
-                    background: #5568d3;
-            }
-
-            /* addSearchLinkAndOpenAllButton & addFaceRecognitionSearchToCasts */
-            button.smallbutton-mod {
-                margin-left: 5px;
-                margin-top: 0;
-                margin-bottom: 0;
-                padding: 3px 9px;
-                width: 160px;
-                height: 22px;
-                user-select: none;
-                background: #f5576c;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                transition: background 0.2s ease;
-                white-space: nowrap;
-                width: 155px;
-            }
-            button.smallbutton-mod:hover {
-                background: #e03d56;
-            }
-            button.smallbutton-mod:active {
-                opacity: 0.9;
-            }
-
-            /* cast search buttons container (should only be in JAV Details) */
-            .find-cast {
-                margin-left: -2px !important;
-            }
-        `);
-    }
 
     switch (true) {
         // JAV Details
-        case /[a-z]{2}\/jav.*/.test(url): {
+        case isJavLibrary && /[a-z]{2}\/jav.*/.test(url): {
             GM_addStyle(`
                 #toplogo .languagemenu {
                     top: 45px;
@@ -374,20 +746,32 @@ function addImprovementsCss() {
                     min-width: 430px;
                     padding-right: 0 !important;
                 }
-
-                /* reduce height between sections */
-                #video_info table {
-                    margin-top: 6px !important;
+                /* compact modern info rows */
+                #video_info .item {
+                    margin: 0 !important;
                 }
-                
-                /* disable strange hover */
+                #video_info .item table {
+                    margin-top: 0 !important;
+                }
                 #video_info table,
                 #video_info table:hover {
                     border-bottom: unset !important;
                 }
-
-                /* cast layout */
-                /* remove unsed space */
+                #video_info .item td.header {
+                    color: #888;
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    align-self: center;
+                    padding: 5px 10px 5px 4px;
+                    white-space: nowrap;
+                }
+                #video_info .item td {
+                    font-size: 14px;
+                    padding: 5px 0;
+                    vertical-align: middle;
+                }
                 #video_info table > tbody > tr > td.icon {
                     display: none;
                 }
@@ -396,7 +780,6 @@ function addImprovementsCss() {
                 .find-cast {
                     display: block;
                     margin-top: 5px;
-                    margin-left: 2px;
                 }
 
                 /* advertising photos */
@@ -417,17 +800,21 @@ function addImprovementsCss() {
                     text-align: left !important;
                     max-width: fit-content;
                 }
+
+                /* cover image */
+                #video_jacket_info > tbody > tr > td {
+                    justify-items: center;
+                }
+
                 /* prevent video metadata from becoming too narrow */
                 #video_jacket_info > tbody > tr > td:nth-child(2) {
-                    min-width: 370px;
                     min-width: 550px;
+                    padding-left: 16px !important;
                 }
 
                 @media screen and (min-width: 1571px) {
                     /* reduce FOUC for cover image */
                     img#video_jacket_img {
-                        width: 800px;
-                        object-fit: contain;
                         /* not too high, especially portraits */
                         max-height: 800px;
                     }
@@ -444,35 +831,141 @@ function addImprovementsCss() {
                     }
                 }
 
+                /* cast image-search buttons */
                 .customButton {
+                //     background: #f0f0f0;
+                //     color: #444;
+                //     border: 1px solid #ddd;
+                //     border-radius: 3px;
+                //     padding: 1px 8px;
+                    font-size: 13px;
+                //     margin: 1px 1px 2px 0;
+                //     transition: background 0.15s ease;
+                //     user-select: none;
+                //     cursor: pointer;
+                //     text-decoration: none;
+                //     display: inline-block;
+                }
+                // .customButton:hover {
+                //     background: #e2e2e2;
+                //     color: #222 !important;
+                // }
+                // .customButton:visited {
+                //     color: #999 !important;
+                // }
+
+                /* image-search buttons */
+                .image-search {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 3px;
+                    align-items: center;
+                    align-content: flex-end;
+                    padding: 0 3px;
+                }
+
+                /* cast row */
+                #video_cast .cast-container {
+                    display: flex;
+                    flex-direction: row;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 4px 6px;
+                    margin: 0 2px 2px 0;
+                    border-radius: 5px;
+                }
+
+                span.cast {
+                    display: flex;
+                    flex-wrap: nowrap;
+                    align-items: center;
+                    margin-bottom: 0;
+                    margin-right: 0;
+                    gap: 4px;
+                }
+
+                /* visited link not visible */
+                #video_info .maker a:visited,
+                #video_info .director a:visited,
+                #video_info .label a:visited,
+                #video_info .genre a:visited
+                {
+                    color: var(--accent-visited);
+                }
+
+                /* cover shadow + rounding */
+                img#video_jacket_img {
+                    border-radius: 4px;
+                    box-shadow: 2px 2px 6px 0px rgba(0, 0, 0, 0.4)
+                }
+
+                /* score — JS colorizes by value; keep font only here */
+                #video_review .score {
+                    font-size: 13px;
+                    font-weight: 700;
+                    margin-left: 6px;
+                    vertical-align: middle;
+                }
+
+                /* favorite buttons as compact horizontal row */
+                #video_favorite_edit {
+                    margin-top: 8px;
+                    padding: 2px 0;
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 4px 0;
+                    align-items: center;
+                    justify-content: center;
+                }
+                #video_favorite_edit .favoritetype {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    margin: 0 10px 4px 0;
                     font-size: 12px;
-                    background-color: #f9f9f9;
-                    padding-block: 2px;
-                    padding-inline: 6px;
-                    margin: 1px 1px 4px 0;
-                    border-width: 1px;
-                    border-style: solid;
-                    border-color: #c9c9c9;
-                    border-radius: 2px;
-                    color: black;
-                    transition: background-color 0.3s ease;
-                    user-select: none;
+                    color: #888;
                 }
-                .customButton:visited {
-                    color: #aaa;
+                #video_favorite_edit button.smallbutton:not(.hidden) {
+                    color: dimgray;
+                    border: 1px solid dimgray;
+                    border-radius: 3px;
+                    padding: 2px 10px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    transition: all 0.2s ease;
+                    cursor: pointer;
                 }
-                .customButton:hover {
-                    background-color: #e0e0e0;
+                #video_favorite_edit button.smallbutton:not(.hidden):hover {
+                    background: dimgray;
+                    color: white;
+                }
+
+                /* Local-Search button */
+                button.smallbutton.localsearch {
+                    position:relative;top:3px;
+                    background: #f5f5f5;
+                    color: #555;
+                    border: 1px solid #ddd;
+                    border-radius: 3px;
+                    padding: 1px 8px;
+                    font-size: 12px;
+                    font-weight: normal;
+                    transition: background 0.15s ease;
+                    vertical-align: middle;
+                    margin-left:10px
+                }
+                button.smallbutton.localsearch:hover {
+                    background: #e8e8e8;
                 }
             `);
             break;
         }
         // no video found
-        case /\/vl_searchbyid.php/.test(url): {
+        case isJavLibrary && /\/vl_searchbyid.php/.test(url): {
             GM_addStyle(`
                 #video_search {
                     font: 14px Arial;
-                    margin-top: 15px;
+                    margin-top: 20px;
                     margin-left: auto;
                     margin-right: auto;
                     width: fit-content;
@@ -518,70 +1011,42 @@ function externalSearch() {
     const currentURL = window.location.href;
     const hostname = window.location.hostname;
 
-    function handleSearchResults() {
-        const postElementSelectors = [
-            //default
-            "[id^=post]",
-            //jav.guru
-            "#main div.row",
-            //missav.ai
-            "div.my-2.text-sm.text-nord4.truncate",
-            //supjav.com
-            ".post",
-        ];
+    async function handleSearchResults() {
+        if (document.title === "Just a moment...") return;
 
-        let posts = [];
-
-        for (let selector of postElementSelectors) {
-            posts = document.querySelectorAll(selector);
-            if (posts.length > 0) break;
+        let searchTerm = new URLSearchParams(window.location.search).get("s");
+        if (!searchTerm) {
+            const match = window.location.href.match(/\/search\/([^/]+)/);
+            searchTerm = match?.[1];
+        }
+        if (!searchTerm) {
+            window.close();
+            return;
         }
 
-        if (posts[0]?.textContent.includes("Error 404") || posts.length === 0) {
-            if (document.title !== "Just a moment...") {
-                window.close();
-            }
-        } else if (posts.length === 1) {
-            const link = posts[0].querySelector("a");
-            if (link && !link.href.includes("#")) {
-                link.click();
-            } else {
-                window.close();
-            }
-        } else if (posts.length <= 30) {
-            let openWindowCheck;
-            posts.forEach((post, index) => {
-                const link = post.querySelector("a");
-                let title = post.textContent;
-
-                const paramName = "s";
-                let searchTerm = new URLSearchParams(window.location.search).get(paramName);
-                if (!searchTerm) {
-                    const url = window.location.href;
-                    const searchPattern = /\/search\/([^\/]+)/;
-                    searchTerm = url.match(searchPattern)[1];
-                }
-
-                if (link && title) {
-                    const regex = new RegExp(`\\b${searchTerm}\\b`, "i");
-                    if (regex.test(title)) {
-                        setTimeout(() => {
-                            openWindowCheck = GM_openInTab(link.href);
-                        }, index * 100);
-                    }
-                }
-            });
-
-            if (openWindowCheck !== null) {
-                setTimeout(() => window.close(), 1000);
-            } else {
-                console.log("window.open blocked");
-            }
+        // poll until results appear — no reliable event signals when JS-rendered content is ready
+        let videoLinks = [];
+        for (let i = 0; i < 5; i++) {
+            videoLinks = findAllVideoUrlsInDoc(document, searchTerm, window.location.href);
+            if (videoLinks.length > 0) break;
+            await new Promise((resolve) => setTimeout(resolve, 500));
         }
+
+        log(`[ext-search] found ${videoLinks.length} video link(s) for "${searchTerm}"`, videoLinks);
+
+        if (videoLinks.length === 0) {
+            window.close();
+            return;
+        }
+
+        videoLinks.forEach((href, index) => {
+            setTimeout(() => GM_openInTab(href, { active: false }), index * 100);
+        });
+        setTimeout(() => window.close(), videoLinks.length * 100 + 500);
     }
 
-    async function handleRapidgatorPages() {
-        console.log("handleRapidgatorPages");
+    function handleRapidgatorPages() {
+        log("[RG] handleRapidgatorPages");
 
         // handle hidden rapidgator links
         if (hostname === "jav.guru") {
@@ -635,7 +1100,7 @@ function externalSearch() {
         } else if (hostname === "supjav.com") {
             document.querySelectorAll("body > div.main > div > div.video-wrap > div.left > div.downs > div > a").forEach((link) => {
                 if (link.textContent.startsWith("RG")) {
-                    window.open(link.href, "_blank");
+                    GM_openInTab(link.href, { active: false });
                 }
             });
             setTimeout(() => window.close(), 200);
@@ -648,8 +1113,7 @@ function externalSearch() {
                     collectedLinks += link.href + "\n";
                 });
 
-                GM_setClipboard(collectedLinks);
-                window.close();
+                coordinateTabs(collectedLinks);
             } else {
                 window.close();
             }
@@ -707,17 +1171,17 @@ function externalSearch() {
 
 async function addImprovements() {
     (async function () {
-        const configured = await GM_getValue("improvements", configurationOptions.improvements.default);
+        const configured = GM_getValue("improvements", configurationOptions.improvements.default);
         if (!configured) return;
 
         switch (true) {
             // JAV Details
-            case /[a-z]{2}\/jav.*/.test(url): {
-                console.log("JAV Details");
+            case isJavLibrary && /[a-z]{2}\/jav.*/.test(url): {
+                log("[page] JAV Details");
 
                 await getAvid();
                 if (!avid) {
-                    console.log("addImprovements details: no AVID");
+                    log("[page] addImprovements details: no AVID");
                     return;
                 }
 
@@ -754,27 +1218,33 @@ async function addImprovements() {
                 // adds own svg to make favorite cast visible
                 makeFavoriteCastVisible();
 
+                // color the score badge by value
+                colorizeScore();
+
                 // move watch status below cover image
                 moveWatchStatus();
 
+                // show news notification
+                showNewsNotification();
+
+                // add configuration icon
+                addConfigIcon();
+
                 // remove redirects for external links
-                setTimeout(() => {
-                    removeRedirects();
-                }, 500);
+                setTimeout(removeRedirects, 500);
 
                 // TODO: needs a more solid solution than just a blind timeout
                 // maybe possible with GM_openInTab
-                const externalSearchMode = await GM_getValue("externalSearchMode", false);
-                const timeout = await GM_getValue("externalSearchModeTimeout", configurationOptions.externalSearchModeTimeout.default);
-                if (externalSearchMode) {
-                    setTimeout(async () => {
+                const timeout = GM_getValue("externalSearchModeTimeout", configurationOptions.externalSearchModeTimeout.default);
+                if (GM_getValue("externalSearchMode", false)) {
+                    setTimeout(() => {
                         GM_setValue("externalSearchMode", false);
-                        console.log("externalSearchMode off");
+                        log("[ext-search] externalSearchMode off");
                     }, timeout);
                 }
 
                 // autorun local search
-                const authorsMode = await GM_getValue("authorsMode", false);
+                const authorsMode = GM_getValue("authorsMode", false);
                 if (authorsMode) {
                     (async function () {
                         // Handle the case when the window is opened in the background
@@ -813,14 +1283,14 @@ async function addImprovements() {
                 break;
             }
             // Redirect Page
-            case /\/redirect.php/.test(url): {
+            case isJavLibrary && /\/redirect.php/.test(url): {
                 document.querySelector("#ckbSkipURLWarning").click();
                 document.querySelector("#redirection").click();
                 break;
             }
             // Video Star Listings
-            case /\/vl_star.php/.test(url): {
-                console.log("Video Star Listings");
+            case isJavLibrary && /\/vl_star.php/.test(url): {
+                log("[page] Video Star Listings");
 
                 // ToDo: highlight visited videos
                 let videoLinks = document.querySelectorAll('div[id^="vid_"] a');
@@ -840,28 +1310,25 @@ async function addImprovements() {
                 break;
             }
             // Advanced Search Page
-            case /\/search.php/.test(url): {
+            case isJavLibrary && /\/search.php/.test(url): {
                 // initialize search wait timer
                 displaySearchWaitTimer();
                 break;
             }
-            case /\/vl_searchbyid.php/.test(url): {
+            case isJavLibrary && /\/vl_searchbyid.php/.test(url): {
                 // if video is not in JAVLibrary add search links else filter results
                 if (
                     (document.querySelector("#rightcolumn > p > em") || document.querySelector("#badalert")) &&
                     document.querySelector("#rightcolumn > div.titlebox")
                 ) {
-                    console.log("no search results");
+                    log("[page] no search results");
 
                     avid = new URLSearchParams(window.location.search).get("keyword");
                     if (avid) {
                         setSearchLinks();
                     }
                 } else {
-                    const searchByIDFilterEnabled = await GM_getValue(
-                        "searchByIDFilter",
-                        configurationOptions.searchByIDFilter.default,
-                    );
+                    const searchByIDFilterEnabled = GM_getValue("searchByIDFilter", configurationOptions.searchByIDFilter.default);
 
                     if (searchByIDFilterEnabled) {
                         /**
@@ -903,15 +1370,15 @@ async function addImprovements() {
 
                 break;
             }
-            case /\/videocomments.php/.test(url): {
-                console.log("Comments Page");
+            case isJavLibrary && /\/videocomments.php/.test(url): {
+                log("[page] Comments Page");
 
-                async function loadNextPage() {
+                function loadNextPage() {
                     copyLinksFromCommentsToClipboard(); // Copy the comments content before loading the next page
 
                     let currentPage = new URL(window.location.href).searchParams.get("page");
                     let lastPageUrl = document.querySelector("#rightcolumn > div.page_selector > a.page.last")?.href;
-                    let lastPage = await GM_getValue("lastPage", null);
+                    let lastPage = GM_getValue("lastPage", null);
 
                     // If lastPage is not set and the last page URL is available, extract and store the last page number
                     if (!lastPage && lastPageUrl) {
@@ -936,7 +1403,7 @@ async function addImprovements() {
 
                             // go back to main page
                             const mainPageLink = document.querySelector("#video_jacket > a");
-                            console.log(mainPageLink);
+                            log("[comments]", mainPageLink);
                             if (mainPageLink) {
                                 // open link
                                 window.open(mainPageLink.href, "_self");
@@ -947,9 +1414,9 @@ async function addImprovements() {
 
                 // initialize
                 (async function () {
-                    let executingCollectingComments = await GM_getValue("executingCollectingComments", false);
+                    let executingCollectingComments = GM_getValue("executingCollectingComments", false);
                     if (executingCollectingComments) {
-                        // await new Promise((resolve) => setTimeout(resolve, 1000));
+                        // await new Promise((resolve) => setTimeout(resolve, 100)); // wait before loading the next page to ensure clipboard operation is completed
                         loadNextPage();
                     } else {
                         window.addEventListener("keydown", function (event) {
@@ -962,7 +1429,7 @@ async function addImprovements() {
 
                 break;
             }
-            // batch external download link and preview searches
+            // for searching for external download links and previews when opening tabs is required
             case /^https?:\/\/javx357\.com\/.*/i.test(url):
             case /^https?:\/\/arcjav\.com\/.*/i.test(url):
             case /^https?:\/\/javgg\.me\/.*/i.test(url):
@@ -973,7 +1440,7 @@ async function addImprovements() {
             case /^https?:\/\/maddawgjav\.net\/.*/i.test(url):
             case /^https?:\/\/video-jav\.net\/.*/i.test(url):
             case /^https?:\/\/javakiba\.org\/.*/i.test(url): {
-                let externalSearchMode = await GM_getValue("externalSearchMode", false);
+                let externalSearchMode = GM_getValue("externalSearchMode", false);
                 if (externalSearchMode) {
                     externalSearch();
                 }
@@ -983,24 +1450,14 @@ async function addImprovements() {
             case /^https:\/\/drive\.google\.com\/uc.*/i.test(url):
             case /^https:\/\/drive\.google\.com\/file\/.*/i.test(url):
             case /^https:\/\/rapidgator\.net\/.*/i.test(url): {
-                let externalSearchMode = await GM_getValue("externalSearchMode", false);
+                let externalSearchMode = GM_getValue("externalSearchMode", false);
                 if (externalSearchMode) {
                     const urls = ["https://drive.google.com", "https://rapidgator.net/file/*"];
                     const currentUrl = window.location.href;
                     const match = urls.some((url) => currentUrl.match(url));
 
                     if (match) {
-                        // Clipboard operation and window close function
-                        function copyToClipboardAndClose() {
-                            // (clipboard needs focus else gone)
-                            // navigator.clipboard.writeText(location.href);
-                            GM_setClipboard(location.href);
-                            setTimeout(() => {
-                                window.close();
-                            }, 500);
-                        }
-
-                        copyToClipboardAndClose();
+                        coordinateTabs(location.href + "\n");
                     }
 
                     if (document.body.textContent.includes("404 File not found")) {
@@ -1028,7 +1485,7 @@ async function addImprovements() {
                             if (document.querySelector("body > div.flashMessage.is-active > div").textContent === "No results found.") {
                                 window.close();
                             }
-                        }, 200);
+                        }, 500);
                     }
                 }
 
@@ -1064,14 +1521,14 @@ async function addImprovements() {
                         if (searchTerm && !isMatchingTitle(title, searchTerm)) {
                             title.closest("li").style.display = "none";
                         } else {
-                            window.open(title.href, "_blank");
+                            GM_openInTab(title.href, { active: false });
                         }
                     });
 
                     setTimeout(() => window.close(), 500);
                 }
 
-                let externalSearchMode = await GM_getValue("externalSearchMode", false);
+                let externalSearchMode = GM_getValue("externalSearchMode", false);
                 if (externalSearchMode) {
                     // if this url then no result, so close window
                     if (/^https?:\/\/www\.akiba-online\.com\/search\/search/i.test(url)) {
@@ -1125,16 +1582,45 @@ async function addImprovements() {
             let spanElement = document.createElement("span");
             spanElement.innerHTML = linkElement.innerHTML;
             linkElement.insertAdjacentElement("beforebegin", spanElement);
-            linkElement.parentNode.removeChild(linkElement);
+            linkElement.remove();
         }
     }
 
     async function addTitleCopyPerClick() {
         let titleElement = await getTitleElement();
 
+        const clipboardSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+        const checkSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+
+        GM_addStyle(`
+            .copy-icon {
+                display: inline-block;
+                margin-left: 5px;
+                margin-bottom: 2px;
+                vertical-align: middle;
+                opacity: 0.35;
+                transition: opacity 0.2s, color 0.2s;
+                color: inherit;
+            }
+            .copy-icon:hover { opacity: 0.75; }
+            .copy-icon.copied { color: #4caf50; opacity: 1; }
+        `);
+
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "copy-icon";
+        iconSpan.innerHTML = clipboardSVG;
+        titleElement.appendChild(iconSpan);
+
         titleElement.style.cursor = "pointer";
         titleElement.addEventListener("click", function () {
-            copyTitleToClipboard();
+            copyTitleToClipboard().then(() => {
+                iconSpan.innerHTML = checkSVG;
+                iconSpan.classList.add("copied");
+                setTimeout(() => {
+                    iconSpan.innerHTML = clipboardSVG;
+                    iconSpan.classList.remove("copied");
+                }, 1500);
+            });
         });
     }
 
@@ -1147,14 +1633,12 @@ async function addImprovements() {
                 // not on image or best of videos
                 if (!document.querySelector("#genre199") && !document.querySelector("#genre39")) {
                     // put once to clipboard
-                    // console.log(`${source}: ${avid}`);
+                    // devLog(`${source}: ${avid}`);
 
                     copyTitleToClipboard()
                         .then(() => {
                             avidCopiedToClipboard = true;
-                            setTimeout(() => {
-                                runLocalSearch();
-                            }, 50);
+                            setTimeout(runLocalSearch, 50);
                         })
                         .catch(function (err) {
                             console.error("Failed to copy text: ", err);
@@ -1171,7 +1655,7 @@ async function addImprovements() {
      * Button and auto execute disabled if GM variable privateMode is not set
      */
     async function addLocalSearchButton() {
-        const authorsMode = await GM_getValue("authorsMode", false);
+        const authorsMode = GM_getValue("authorsMode", false);
 
         if (authorsMode) {
             let targetElement = await getTitleElement();
@@ -1179,7 +1663,6 @@ async function addImprovements() {
             let newButton = document.createElement("button");
             newButton.textContent = "Local-Search";
             newButton.className = "smallbutton localsearch";
-            newButton.style = "position:relative;top:-3px;margin-left:10px";
 
             targetElement.insertAdjacentElement("afterend", newButton);
 
@@ -1211,15 +1694,7 @@ async function addImprovements() {
 
         // build cover image name
         let casts = document.querySelectorAll("[id^=cast] > span.star > a");
-        let newFilename;
-        // in VR titles, JAVLibrary adds an additional leading zero after hyphen
-        // remove these if there are five digits after the hyphen to get correct titles
-        // e.g. XYZ-05678 -> XYZ-5678
-        if (document.querySelector("span#genre558") && avid && /-\d{5}/.test(avid)) {
-            newFilename = avid.replace(/-(0+)/, "-") + " " + avid + " - ";
-        } else {
-            newFilename = avid + " - ";
-        }
+        let newFilename = avid + " - ";
         let iteration = casts.length;
         for (let cast of casts) {
             const replaced = cast.textContent.replace(/[^\x00-\x7F]/g, "");
@@ -1255,7 +1730,7 @@ async function addImprovements() {
                     const maxRetries = 10;
                     let currentTry = 0;
 
-                    async function tryDownload() {
+                    function tryDownload() {
                         const blob = downloadedFiles[newFilename];
                         if (blob) {
                             const blobUrl = URL.createObjectURL(blob);
@@ -1273,14 +1748,14 @@ async function addImprovements() {
                     }
 
                     while (currentTry < maxRetries) {
-                        const success = await tryDownload();
+                        const success = tryDownload();
                         if (success) {
                             break;
                         }
 
                         currentTry++;
                         if (currentTry < maxRetries) {
-                            console.log(`Download attempt ${currentTry} failed. Retrying...`);
+                            log(`[cover] Download attempt ${currentTry} failed. Retrying...`);
                             // Optional: Add delay between retries
                             await new Promise((resolve) => setTimeout(resolve, 1000));
                         } else {
@@ -1293,311 +1768,462 @@ async function addImprovements() {
         }
     }
 
-    // Shared function to add search links with optional buttons
-    function addSearchLinkAndOpenAllButton(name, href, className, separator, containerElement) {
-        let newElementContainer = document.createElement("div");
-        newElementContainer.classList.add("added-links");
-        if (separator) newElementContainer.classList.add("added-links-separator");
-        if (className) newElementContainer.classList.add(className);
+    function addSearchLinkAndOpenAllButton(name, href, className, containerElement, bgFetch = true) {
+        const div = document.createElement("div");
+        div.classList.add("added-links");
+        if (className) div.classList.add(className);
+        const a = document.createElement("a");
+        a.href = href;
+        a.target = "_blank";
+        a.textContent = name;
+        a.dataset.bgFetch = String(bgFetch);
+        div.appendChild(a);
+        containerElement.appendChild(div);
+    }
 
-        let newElement = document.createElement("a");
-        newElement.href = href;
-        newElement.textContent = name;
-        newElementContainer.appendChild(newElement);
+    function getDataFetchTimeout() {
+        return GM_getValue("externalDataFetchTimeout", configurationOptions.externalDataFetchTimeout.default);
+    }
 
-        // add open all links buttons
-        if (separator && className && className !== "Torrent") {
-            const openAllButton = document.createElement("button");
-            const buttonTitle = className.replace(/-/g, " ");
+    function addTooltipToLink(link, text) {
+        const tip = document.createElement("div");
+        tip.className = "prefetch-tooltip";
+        tip.textContent = text;
+        link.appendChild(tip);
+    }
 
-            openAllButton.textContent = buttonTitle;
-            openAllButton.className = "smallbutton smallbutton-mod";
+    function prefetchGroupResults(className) {
+        if (!avid) return;
+        const links = document.querySelectorAll(`.search-group.${className} .search-group-links a`);
+        const parser = new DOMParser();
+        const timeout = getDataFetchTimeout();
 
-            openAllButton.addEventListener("click", async function () {
-                let linksToOpen = document.querySelectorAll(`.${className}.added-links a`);
-                let reversedLinks = Array.from(linksToOpen).reverse();
+        log(`[prefetch] ${className}: checking ${links.length} link(s)`);
 
-                GM_setValue("externalSearchMode", true);
+        links.forEach((link) => {
+            if (link.classList.contains("prefetch-found") || link.classList.contains("prefetch-not-found")) {
+                log(`[prefetch] ${link.textContent.trim()}: already checked, skipping`);
+                return;
+            }
+            log(`[prefetch] ${link.textContent.trim()}: fetching ${link.href}`);
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: link.href,
+                timeout: timeout,
+                onload: (response) => {
+                    if (isCloudflare(response.responseText)) {
+                        log(`[prefetch] ${link.textContent.trim()}: Cloudflare detected`);
+                        if (!link.classList.contains("prefetch-cloudflare")) {
+                            link.classList.add("prefetch-cloudflare");
+                            addTooltipToLink(link, "CF block (visit manually)");
+                        }
+                        return;
+                    }
+                    if (response.status !== 200) {
+                        log(`[prefetch] ${link.textContent.trim()}: HTTP ${response.status}`);
+                        link.classList.add("prefetch-error");
+                        addTooltipToLink(link, `HTTP ${response.status}`);
+                        return;
+                    }
 
-                const timeoutValue = await GM_getValue(
-                    "externalSearchModeTimeout",
-                    configurationOptions.externalSearchModeTimeout.default,
-                );
-                setTimeout(async () => {
-                    GM_setValue("externalSearchMode", false);
-                    console.log("externalSearchMode off");
-                }, timeoutValue + 2000);
-
-                if (className === "Collect-Rapidgator-Links") {
-                    reversedLinks.forEach(function (link) {
-                        GM_openInTab(link.href);
-                    });
-                } else {
-                    reversedLinks.forEach(function (link) {
-                        window.open(link.href);
-                    });
-                }
+                    // Check if the avid is present in any link on the page (case-insensitive)
+                    const doc = parser.parseFromString(response.responseText, "text/html");
+                    const found = findAllVideoUrlsInDoc(doc, avid, link.href).length > 0;
+                    log(`[prefetch] ${link.textContent.trim()}: ${found ? "found" : "not found"}`);
+                    link.classList.add(found ? "prefetch-found" : "prefetch-not-found");
+                    if (!found && !GM_getValue("prefetchShowNotFound", configurationOptions.prefetchShowNotFound.default)) {
+                        link.parentElement.style.display = "none";
+                    }
+                },
+                onerror: () => {
+                    log(`[prefetch] ${link.textContent.trim()}: request error`);
+                    link.classList.add("prefetch-error");
+                    addTooltipToLink(link, "Error");
+                },
+                ontimeout: () => {
+                    log(`[prefetch] ${link.textContent.trim()}: timeout`);
+                    link.classList.add("prefetch-error");
+                    addTooltipToLink(link, "Timeout");
+                },
             });
+        });
+    }
 
-            newElementContainer.appendChild(openAllButton);
+    function bgXhr(url) {
+        const timeout = getDataFetchTimeout();
+
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url,
+                timeout: timeout,
+                onload: resolve,
+                onerror: () => resolve(null),
+                ontimeout: () => resolve(null),
+            });
+        });
+    }
+
+    function isCloudflare(html) {
+        return html.includes("Just a moment") || html.includes("cf-browser-verification");
+    }
+
+    // Returns array of RG links, or null if Cloudflare was detected (triggers tab fallback)
+    async function bgFetchRgLinks(searchUrl, avid) {
+        const site = new URL(searchUrl).hostname;
+        log(`[RG-BG] ${site}: fetching ${searchUrl}`);
+
+        const resp = await bgXhr(searchUrl);
+        if (!resp) {
+            log(`[RG-BG] ${site}: request failed (null)`);
+            return [];
+        }
+        if (isCloudflare(resp.responseText)) {
+            log(`[RG-BG] ${site}: Cloudflare detected → tab fallback`);
+            return null;
         }
 
-        containerElement.appendChild(newElementContainer);
+        const parser = new DOMParser();
+        const searchDoc = parser.parseFromString(resp.responseText, "text/html");
+
+        const videoUrls = findAllVideoUrlsInDoc(searchDoc, avid, searchUrl);
+        if (videoUrls.length === 0) {
+            log(`[RG-BG] ${site}: no video pages found for ${avid}`);
+            return [];
+        }
+        log(`[RG-BG] ${site}: found ${videoUrls.length} video page(s)`, videoUrls);
+
+        const allLinks = new Set();
+        await Promise.all(
+            videoUrls.map(async (videoUrl) => {
+                const vResp = await bgXhr(videoUrl);
+                if (!vResp) {
+                    log(`[RG-BG] ${site}: video page request failed: ${videoUrl}`);
+                    return;
+                }
+                if (isCloudflare(vResp.responseText)) {
+                    log(`[RG-BG] ${site}: Cloudflare on video page: ${videoUrl}`);
+                    return;
+                }
+                const videoDoc = parser.parseFromString(vResp.responseText, "text/html");
+                [...videoDoc.querySelectorAll("a")]
+                    .map((a) => a.getAttribute("href"))
+                    .filter((href) => href && /rapidgator\.net\/file\//i.test(href))
+                    .forEach((href) => allLinks.add(href));
+            }),
+        );
+
+        const links = [...allLinks];
+        log(`[RG-BG] ${site}: found ${links.length} RG link(s)`, links);
+        return links;
+    }
+
+    function setExternalSearchMode() {
+        GM_setValue("externalSearchMode", true);
+        const duration = GM_getValue("externalSearchModeTimeout", configurationOptions.externalSearchModeTimeout.default) + 2000;
+        setTimeout(() => {
+            GM_setValue("externalSearchMode", false);
+            log("[ext-search] externalSearchMode off");
+        }, duration);
+    }
+
+    async function collectRapidgatorLinksHybrid() {
+        const groupLinks = [...document.querySelectorAll(".search-group.Rapidgator-Group .search-group-links a")];
+        const bgLinks = groupLinks.filter((a) => a.dataset.bgFetch === "true");
+        const tabLinks = groupLinks.filter((a) => a.dataset.bgFetch !== "true");
+        log(
+            "[RG] Starting collect for",
+            avid,
+            "— bg:",
+            bgLinks.map((a) => a.href),
+            "tabs:",
+            tabLinks.map((a) => a.href),
+        );
+
+        const bgResults = await Promise.all(bgLinks.map((a) => bgFetchRgLinks(a.href, avid).catch(() => null)));
+
+        const collectedLinks = [];
+        const cfTabUrls = [];
+        bgResults.forEach((result, i) => {
+            if (result === null) cfTabUrls.push(bgLinks[i].href);
+            else collectedLinks.push(...result);
+        });
+
+        log(
+            `[RG] Background: ${collectedLinks.length} link(s) collected, ${cfTabUrls.length} CF fallback(s), ${tabLinks.length} tab-only source(s)`,
+        );
+        if (collectedLinks.length > 0) {
+            log("[RG] Copying to clipboard:", collectedLinks);
+            GM_setClipboard(collectedLinks.join("\n"));
+        }
+
+        setExternalSearchMode();
+
+        const tabsToOpen = [...tabLinks.map((a) => a.href), ...cfTabUrls];
+        log("[RG] Opening tabs:", tabsToOpen);
+        for (const url of tabsToOpen) {
+            GM_openInTab(url, { active: false });
+        }
     }
 
     function setSearchLinks() {
-        // Create main container structure like video_cast
         const searchContainer = document.createElement("div");
         searchContainer.id = "video_search";
         searchContainer.className = "item";
 
         const table = document.createElement("table");
         const tbody = document.createElement("tbody");
-        const tr = document.createElement("tr");
-
-        // Header cell (left side - "Searches:")
-        const headerTd = document.createElement("td");
-        headerTd.className = "header";
-        headerTd.textContent = "Searches:";
-
-        // Content cell (right side - all search links)
-        const contentTd = document.createElement("td");
-        contentTd.className = "text";
-
-        tr.appendChild(headerTd);
-        tr.appendChild(contentTd);
-        tbody.appendChild(tr);
         table.appendChild(tbody);
         searchContainer.appendChild(table);
 
-        // Insert after cast container
+        // Creates a 2-column row (td.header | td.text).
+        // For groups with a groupClassName, td.text contains a flex row:
+        //   div.search-group-actions | div.search-group > div.search-group-links
+        // Returns { actionTd, linksTd, contentTd }
+        function addGroupRow(label, groupClassName) {
+            const tr = document.createElement("tr");
+
+            const headerTd = document.createElement("td");
+            headerTd.className = "header";
+            headerTd.textContent = label;
+
+            const contentTd = document.createElement("td");
+            contentTd.className = "text";
+
+            tr.appendChild(headerTd);
+            tr.appendChild(contentTd);
+            tbody.appendChild(tr);
+
+            if (!groupClassName) {
+                return { actionTd: null, linksTd: contentTd, contentTd };
+            }
+
+            const actionDiv = document.createElement("div");
+            actionDiv.className = `search-group-actions ${groupClassName}`;
+            headerTd.appendChild(actionDiv);
+
+            const groupWrapper = document.createElement("div");
+            groupWrapper.className = `search-group ${groupClassName}`;
+            const linksWrapper = document.createElement("div");
+            linksWrapper.className = "search-group-links";
+            groupWrapper.appendChild(linksWrapper);
+            contentTd.appendChild(groupWrapper);
+
+            return { actionTd: actionDiv, linksTd: linksWrapper, contentTd };
+        }
+
+        /**
+         * Adds an action button to a search group header.
+         * Default behaviour: opens all links in the group as tabs.
+         *
+         * @param {HTMLElement} actionTd - Container element the button is appended to
+         * @param {string} label - Button label
+         * @param {string} className - CSS class of the search group whose links are opened
+         * @param {Function|null} [onClickOverride] - Replaces the default tab-opening entirely, e.g. for background-fetching or prefetching
+         * @param {boolean} [openActive=false] - If true, opened tabs get focus; otherwise they open in the background
+         */
+        function addGroupActionButton(actionTd, label, className, onClickOverride = null, openActive = false) {
+            const button = document.createElement("button");
+            button.textContent = label;
+            button.className = "smallbutton smallbutton-mod";
+            if (onClickOverride) {
+                button.addEventListener("click", onClickOverride);
+            } else {
+                button.addEventListener("click", async function () {
+                    const linksToOpen = document.querySelectorAll(`.search-group.${className} .search-group-links a`);
+                    const reversedLinks = Array.from(linksToOpen).reverse();
+
+                    setExternalSearchMode();
+
+                    reversedLinks.forEach((link) => GM_openInTab(link.href, { active: openActive }));
+                });
+            }
+            actionTd.appendChild(button);
+        }
+
         const searchInsertTarget = castContainer() || document.querySelector("#rightcolumn > div.titlebox");
         if (searchInsertTarget) {
             searchInsertTarget.insertAdjacentElement("afterend", searchContainer);
         }
 
+        // When adding a button for a new site to any group:
+        //   If the script should also run on that site (e.g. to auto-close empty result tabs), add:
+        //     (1) @match at the top of this file
+        //     (2) a routing case in runSearch() pointing to the appropriate handler
+
         // Torrent
         if (GM_getValue("searchGroupTorrent", configurationOptions.searchGroups.searchGroupTorrent.default)) {
-            addSearchLinkAndOpenAllButton("BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "Torrent", true, contentTd);
-            addSearchLinkAndOpenAllButton("BTDig", "https://btdig.com/search?order=3&q=" + avid, "Torrent", false, contentTd);
-            addSearchLinkAndOpenAllButton(
-                "Sukebei",
-                "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid,
-                "Torrent",
-                false,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton("BT1207", "https://bt1207so.top/?find=" + avid, "Torrent", false, contentTd);
+            const { linksTd } = addGroupRow("Torrents:");
+            addSearchLinkAndOpenAllButton("BT4G", "https://bt4gprx.com/search?q=" + avid + "&orderby=size", "Torrent", linksTd);
+            addSearchLinkAndOpenAllButton("BTDig", "https://btdig.com/search?order=3&q=" + avid, "Torrent", linksTd);
+            addSearchLinkAndOpenAllButton("Sukebei", "https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=" + avid, "Torrent", linksTd);
+            addSearchLinkAndOpenAllButton("BT1207", "https://bt1207so.top/?find=" + avid, "Torrent", linksTd);
         }
 
         // Thumbnails 1
         if (GM_getValue("searchGroupThumbnails1", configurationOptions.searchGroups.searchGroupThumbnails1.default)) {
+            const { actionTd, linksTd } = addGroupRow("Thumbnails 1:", "Thumbnails-1-Group");
+            addGroupActionButton(actionTd, "Search All", "Thumbnails-1-Group", null, true);
             addSearchLinkAndOpenAllButton(
-                "Akiba-Online | Thumbnails",
+                "Akiba-Online",
                 "https://www.akiba-online.com/search/?q=" + avid + "&c%5Btitle_only%5D=1&o=date&search=" + avid,
-                "Search-Thumbnails-1",
-                true,
-                contentTd,
+                "Thumbnails-1-Group",
+                linksTd,
             );
-            addSearchLinkAndOpenAllButton(
-                "Max JAV | Thumbnails",
-                "https://maxjav.com/?s=" + avid,
-                "Search-Thumbnails-1",
-                false,
-                contentTd,
-            );
+            addSearchLinkAndOpenAllButton("Max JAV", "https://maxjav.com/?s=" + avid, "Thumbnails-1-Group", linksTd);
         }
 
         // Thumbnails 2
         if (GM_getValue("searchGroupThumbnails2", configurationOptions.searchGroups.searchGroupThumbnails2.default)) {
-            addSearchLinkAndOpenAllButton(
-                "JAV-Load | Thumbnails",
-                "https://jav-load.com/?s=" + avid,
-                "Search-Thumbnails-2",
-                true,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton(
-                "Video-JAV | Thumbnails",
-                "http://video-jav.net/?s=" + avid,
-                "Search-Thumbnails-2",
-                false,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton(
-                "JAVAkiba | Thumbnails",
-                "https://javakiba.org/?s=" + avid,
-                "Search-Thumbnails-2",
-                false,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton(
-                "3xPlanet | Thumbnails",
-                "https://3xplanet.com/?s=" + avid,
-                "Search-Thumbnails-2",
-                false,
-                contentTd,
-            );
+            const { actionTd, linksTd } = addGroupRow("Thumbnails 2:", "Thumbnails-2-Group");
+            addGroupActionButton(actionTd, "Search All", "Thumbnails-2-Group", () => prefetchGroupResults("Thumbnails-2-Group"));
+            addSearchLinkAndOpenAllButton("JAV-Load", "https://jav-load.com/?s=" + avid, "Thumbnails-2-Group", linksTd);
+            addSearchLinkAndOpenAllButton("Video-JAV", "http://video-jav.net/?s=" + avid, "Thumbnails-2-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAVAkiba", "https://javakiba.org/?s=" + avid, "Thumbnails-2-Group", linksTd);
+            if (GM_getValue("prefetchOnLoadThumbnails2", configurationOptions.prefetchOnLoad.prefetchOnLoadThumbnails2.default))
+                prefetchGroupResults("Thumbnails-2-Group");
         }
 
         // Rapidgator
+        // When adding a new button here, two additional decisions compared to other groups:
+        //
+        //   CONTAINER — 4th argument:
+        //     linksTd   → button is part of the group; "collect all" will process it
+        //     contentTd → "optional" button shown below the row; ignored by "collect all"
+        //
+        //   bgFetch — 5th argument (default = true):
+        //     false → tab mode: the script runs on the site to extract RG links — also add:
+        //               @match + runSearch() (see general note above) +
+        //               handleRapidgatorPages(): add an else-if for custom extraction,
+        //               or the generic else-branch handles plain a[href*=rapidgator] links automatically
+        //     true  → background-fetch mode: GM_xmlhttpRequest scrapes RG links directly,
+        //             falls back to tab if Cloudflare blocks — no @match or runSearch() needed
         if (GM_getValue("searchGroupRapidgator", configurationOptions.searchGroups.searchGroupRapidgator.default)) {
+            const { actionTd, linksTd, contentTd } = addGroupRow("Rapidgator:", "Rapidgator-Group");
+            addGroupActionButton(actionTd, "Collect All", "Rapidgator-Group", collectRapidgatorLinksHybrid);
+            addSearchLinkAndOpenAllButton("JAV Guru", "https://jav.guru/?s=" + avid, "Rapidgator-Group", linksTd, false);
+            addSearchLinkAndOpenAllButton("Supjav", "https://supjav.com/?s=" + avid, "Rapidgator-Group", linksTd, false);
+            addSearchLinkAndOpenAllButton("MissAV", "https://missav.ai/en/search/" + avid, "Rapidgator-Group", linksTd, false);
+            addSearchLinkAndOpenAllButton("Maddawg JAV", "https://maddawgjav.net/?s=" + avid, "Rapidgator-Group", linksTd, false);
+            addSearchLinkAndOpenAllButton("BLOGJAV.NET (optional)", "https://blogjav.net/?s=" + avid, "", contentTd);
             addSearchLinkAndOpenAllButton(
-                "JAV Guru | RG | Stream",
-                "https://jav.guru/?s=" + avid,
-                "Collect-Rapidgator-Links",
-                true,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton("Supjav | RG", "https://supjav.com/?s=" + avid, "Collect-Rapidgator-Links", false, contentTd);
-            addSearchLinkAndOpenAllButton(
-                "MissAV | RG | Stream",
-                "https://missav.ai/en/search/" + avid,
-                "Collect-Rapidgator-Links",
-                false,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton(
-                "Maddawg JAV | RG",
-                "https://maddawgjav.net/?s=" + avid,
-                "Collect-Rapidgator-Links",
-                false,
-                contentTd,
-            );
-
-            addSearchLinkAndOpenAllButton("BLOGJAV.NET | RG (optional)", "https://blogjav.net/?s=" + avid, "", true, contentTd);
-            addSearchLinkAndOpenAllButton(
-                "JAVDAILY | RG  (optional)",
+                "JAVDAILY (optional)",
                 `https://duckduckgo.com/?q=site:javdaily.eklablog.com+"${avid}"`,
                 "",
-                false,
                 contentTd,
             );
-            addSearchLinkAndOpenAllButton("JAVStore | RG (optional)", "https://javstore.net/search?q=" + avid, "", false, contentTd);
+            addSearchLinkAndOpenAllButton("JAVStore (optional)", "https://javstore.net/search?q=" + avid, "", contentTd);
         }
 
         // Google Drive
         if (GM_getValue("searchGroupGDrive", configurationOptions.searchGroups.searchGroupGDrive.default)) {
-            addSearchLinkAndOpenAllButton("JAVGG | Google Drive", "https://javgg.me/?s=" + avid, "Open-GDrive-Group", true, contentTd);
-            addSearchLinkAndOpenAllButton(
-                "JAV GDRIVE | Google Drive",
-                "https://javx357.com/?s=" + avid,
-                "Open-GDrive-Group",
-                false,
-                contentTd,
-            );
+            const { actionTd, linksTd } = addGroupRow("GDrive:", "GDrive-Group");
+            addGroupActionButton(actionTd, "Search All", "GDrive-Group", () => prefetchGroupResults("GDrive-Group"));
+            addSearchLinkAndOpenAllButton("JAVGG", "https://javgg.me/?s=" + avid, "GDrive-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAV GDRIVE", "https://javx357.com/?s=" + avid, "GDrive-Group", linksTd);
+            if (GM_getValue("prefetchOnLoadGDrive", configurationOptions.prefetchOnLoad.prefetchOnLoadGDrive.default))
+                prefetchGroupResults("GDrive-Group");
         }
 
         // Stream
         if (GM_getValue("searchGroupStream", configurationOptions.searchGroups.searchGroupStream.default)) {
-            addSearchLinkAndOpenAllButton("HORNYJAV | Stream", "https://hornyjav.com/?s=" + avid, "Open-Stream-Group", true, contentTd);
+            const { actionTd, linksTd } = addGroupRow("Stream:", "Stream-Group");
+            addGroupActionButton(actionTd, "Search All", "Stream-Group", () => prefetchGroupResults("Stream-Group"));
+            addSearchLinkAndOpenAllButton("HORNYJAV", "https://hornyjav.com/?s=" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("TwoJAV", "https://www.twojav.com/en/search?q=" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAV Most", "https://www5.javmost.com/search/" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("SEXTB", "https://sextb.net/search/" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("Jable", "https://jable.tv/search/" + avid + "/", "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("BIGO JAV", "https://bigojav.com/?s=" + avid, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton(
-                "TwoJAV | Stream",
-                "https://www.twojav.com/en/search?q=" + avid,
-                "Open-Stream-Group",
-                false,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton(
-                "JAV Most | Stream",
-                "https://www5.javmost.com/search/" + avid,
-                "Open-Stream-Group",
-                false,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton("SEXTB | Stream", "https://sextb.net/search/" + avid, "Open-Stream-Group", false, contentTd);
-            addSearchLinkAndOpenAllButton(
-                "Jable | Stream",
-                "https://jable.tv/search/" + avid + "/",
-                "Open-Stream-Group",
-                false,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton("BIGO JAV | Stream", "https://bigojav.com/?s=" + avid, "Open-Stream-Group", false, contentTd);
-            addSearchLinkAndOpenAllButton(
-                "HighPorn | Stream",
+                "HighPorn",
                 "https://highporn.net/search/videos?search_query=" + avid,
-                "Open-Stream-Group",
-                false,
-                contentTd,
+                "Stream-Group",
+                linksTd,
             );
+            addSearchLinkAndOpenAllButton("BestJavPorn", "https://www.bestjavporn.com/search/" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("18AV", "https://18av.mm-cg.com/en/fc_search/all/" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAVMENU", "https://javmenu.com/en/search?wd=" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("Supjav", "https://supjav.com/?s=" + avid, "Stream-Group", linksTd);
+            // https://evojav.pro/?s=test
+            // https://www.av01.media/en/search?q=test
+            // https://ggjav.com/en/main/search?string=test
+            // https://123av.com/en/search?keyword=test
+
+            if (GM_getValue("prefetchOnLoadStream", configurationOptions.prefetchOnLoad.prefetchOnLoadStream.default))
+                prefetchGroupResults("Stream-Group");
         }
 
         // Alternative research platforms
         if (GM_getValue("searchGroupResearchPlatforms", configurationOptions.searchGroups.searchGroupResearchPlatforms.default)) {
-            addSearchLinkAndOpenAllButton(
-                "JAV-Menu | alternative research platform",
-                "https://jjavbooks.com/en/" + avid,
-                "",
-                true,
-                contentTd,
-            );
-            addSearchLinkAndOpenAllButton(
-                "JavPlace | alternative research platform",
-                "https://jav.place/en?q=" + avid,
-                "",
-                false,
-                contentTd,
-            );
+            const { linksTd } = addGroupRow("Research:");
+            addSearchLinkAndOpenAllButton("JAVBOOKS", "https://jjavbooks.com/en/" + avid, "", linksTd);
+            addSearchLinkAndOpenAllButton("JavPlace", "https://jav.place/en?q=" + avid, "", linksTd);
         }
 
         // DuckDuckGo
         if (GM_getValue("searchGroupDuckDuckGo", configurationOptions.searchGroups.searchGroupDuckDuckGo.default)) {
+            const { linksTd } = addGroupRow("DuckDuckGo:");
             addSearchLinkAndOpenAllButton(
-                "DuckDuckGo | Video Rapidgator Search",
+                "Video Rapidgator Search",
                 "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + encodeURIComponent(`"${avid}" "Rapidgator"`),
                 "",
-                true,
-                contentTd,
+                linksTd,
             );
             addSearchLinkAndOpenAllButton(
-                "DuckDuckGo | Video Image Search",
+                "Video Image Search",
                 "https://duckduckgo.com/?kp=-2&iax=images&ia=images&q=" + '"' + avid + '"' + " JAV",
                 "",
-                false,
-                contentTd,
+                linksTd,
             );
         }
     }
 
     function collectingLinksFromCommentsAndRgGroupButton() {
-        const searchContainer = document.querySelector("#video_search");
-        if (!searchContainer) return;
+        const actionTd = document.querySelector("#video_search .search-group-actions.Rapidgator-Group");
+        if (!actionTd) return;
 
-        const target = document.querySelector("#video_search td.text div.added-links.Collect-Rapidgator-Links ~ div");
+        const button = document.createElement("button");
+        button.textContent = "+ Comments";
+        button.title = "Hotkey: < or \\";
+        button.className = "smallbutton smallbutton-mod";
+        button.onclick = collectingLinksFromCommentsAndRgGroup;
+        actionTd.appendChild(button);
+    }
 
-        function addButton(text, action) {
-            let button = document.createElement("button");
-            button.textContent = text;
-            button.title = "Hotkey: < or \\";
-            button.className = "smallbutton smallbutton-mod";
-            button.style = "position: relative; margin-top: 6px;";
-            button.onclick = function () {
-                action();
-            };
+    function colorizeScore() {
+        const scoreEl = document.querySelector("#video_review .score");
+        if (!scoreEl) return;
 
-            target.appendChild(button);
-        }
+        const match = scoreEl.textContent.match(/[\d.]+/);
+        if (!match) return;
 
-        addButton("+ Links from Comments", collectingLinksFromCommentsAndRgGroup);
+        const score = parseFloat(match[0]);
+        scoreEl.textContent = match[0];
+        const color = score >= 8.0 ? "#22a861" : score >= 6.5 ? "#f59e0b" : "#ef4444";
+
+        Object.assign(scoreEl.style, {
+            color: "white",
+            background: color,
+            padding: "2px 8px",
+            borderRadius: "3px",
+        });
     }
 
     // Execute when button pressed with collecting comments for importing into Jdownloader
-    function collectingLinksFromCommentsAndRgGroup() {
+    async function collectingLinksFromCommentsAndRgGroup() {
         // press Open Rapidgator Group button
-        document.querySelector("#video_search .Collect-Rapidgator-Links.added-links-separator > button")?.click();
+        document.querySelector("#video_search .search-group-actions.Rapidgator-Group button")?.click();
 
         // go to comments page, if not already there
         const allCommentsLink = document.querySelector("#video_comments_all > a");
         if (allCommentsLink) {
             // open link
-            GM_setValue("executingCollectingComments", true);
-            setTimeout(() => {
-                window.open(allCommentsLink.href, "_self");
-            }, 200);
+            await GM_setValue("executingCollectingComments", true);
+            window.open(allCommentsLink.href, "_self");
         } else if (document.querySelector("#rightcolumn > div.page_selector > a.page.last")) {
             // if already on comments page
-            GM_setValue("executingCollectingComments", true);
+            await GM_setValue("executingCollectingComments", true);
             location.reload();
         } else {
             copyLinksFromCommentsToClipboard();
@@ -1625,36 +2251,9 @@ async function addImprovements() {
         }
     }
 
-    async function addCastImagesSearchButtons() {
-        const masterEnabled = await GM_getValue("castButtonsEnabled", true);
+    function addCastImagesSearchButtons() {
+        const masterEnabled = GM_getValue("castButtonsEnabled", true);
         if (!masterEnabled) return;
-
-        GM_addStyle(`
-            .cast-container {
-                display: flex;
-                flex-wrap: wrap;
-                margin: 0px 2px 2px 0;
-                border-radius: 5px;
-                /* 
-                background: rgb(243, 243, 243);
-                padding: 2px 3px;
-                */
-            }
-            span.cast {
-                display: flex;
-                flex-wrap: nowrap;
-                align-items: center;
-                margin-bottom: 0;
-                margin-right: 0;
-                gap: 4px;
-            }
-            .image-search {
-                display: flex;
-                flex-wrap: wrap;
-                align-content: flex-end;
-                padding: 0 3px;
-            }
-        `);
 
         const castElements = document.querySelectorAll("[id^=cast]");
         for (let castElement of castElements) {
@@ -1692,14 +2291,14 @@ async function addImprovements() {
 
             // Read button definitions from configurationOptions.castButtons
             for (let [key, buttonDef] of Object.entries(configurationOptions.castButtons)) {
-                const enabled = await GM_getValue(`castButton_${key}`, buttonDef.enabled);
+                const enabled = GM_getValue(`castButton_${key}`, buttonDef.enabled);
                 if (enabled) addButton(buttonDef.text, buttonDef.link);
             }
         }
     }
 
-    async function addCastSearchButton() {
-        const configured = await GM_getValue("castSearchButtonEnabled", configurationOptions.castSearchButtonEnabled.default);
+    function addCastSearchButton() {
+        const configured = GM_getValue("castSearchButtonEnabled", configurationOptions.castSearchButtonEnabled.default);
         if (!configured) return;
 
         const castContainer = document.querySelector("#video_cast > table > tbody > tr > td.text");
@@ -1709,10 +2308,12 @@ async function addImprovements() {
 
         function addButton(text, link, title = "") {
             const button = document.createElement("button");
+            // const button = document.createElement("a");
             button.textContent = text;
             button.title = title;
             button.className = "smallbutton smallbutton-mod";
-            button.style = "width: unset";
+            // button.className = "customButton";
+            button.style.width = "unset";
             button.onclick = function () {
                 window.open(link, "_blank");
             };
@@ -1721,17 +2322,17 @@ async function addImprovements() {
         }
 
         if (!avid) {
-            console.log("getVideoThumbnailUrl: no AVID");
+            log("[cast-search] no AVID");
             return;
         }
 
-        addButton("cast by face", "https://xslist.org/en/searchByImage");
-        addButton("cast by face 2", "https://www.av-search.online/", "Looks defect but works");
-        addButton("cast by face 3", "https://ggjav.com/ja/main/recognize_pornstar");
-        addButton("cast by scene", "https://avwikidb.com/en/work/" + avid);
+        addButton("Cast by Face", "https://xslist.org/en/searchByImage");
+        addButton("Cast by Face 2", "https://www.av-search.online/", "Looks defect but works");
+        addButton("Cast by Face 3", "https://ggjav.com/ja/main/recognize_pornstar");
+        addButton("Cast by Scene", "https://avwikidb.com/en/work/" + avid);
     }
 
-    async function makeFavoriteCastVisible() {
+    function makeFavoriteCastVisible() {
         const favoriteClass = "favorite-star";
 
         function addFavoriteCastCss() {
@@ -1800,7 +2401,7 @@ async function addImprovements() {
         const starElements = document.querySelectorAll("[id^=star]");
         for (const element of starElements) {
             const elementId = element.id;
-            const isFavoriteStar = await GM_getValue(elementId, false);
+            const isFavoriteStar = GM_getValue(elementId, false);
             if (isFavoriteStar) {
                 element.classList.add(favoriteClass);
             }
@@ -1826,13 +2427,6 @@ async function addImprovements() {
     }
 
     function moveWatchStatus() {
-        GM_addStyle(`
-            #video_favorite_edit {
-                text-align: center;
-                margin-top: 2px;
-            }
-        `);
-
         const videoWatchStatus = document.querySelector("#video_favorite_edit");
         const videoCover = document.querySelector("#video_jacket");
 
@@ -1937,7 +2531,7 @@ async function addImprovements() {
                 subtree: true,
             });
 
-            console.log("Search countdown observer initialized");
+            log("[search] Search countdown observer initialized");
         })();
     }
 }
@@ -1946,8 +2540,8 @@ async function addImprovements() {
 // Video Thumbnails
 // =======================================================================================
 
-async function addVideoThumbnails() {
-    const configured = await GM_getValue("videoThumbnails", configurationOptions.videoThumbnails.default);
+function addVideoThumbnails() {
+    const configured = GM_getValue("videoThumbnails", configurationOptions.videoThumbnails.default);
     if (!configured) return;
 
     function addThumbnailCss() {
@@ -1979,19 +2573,19 @@ async function addVideoThumbnails() {
     }
 
     async function getVideoThumbnailUrl() {
-        // only in details view
-        if (!/[a-z]{2}\/jav.*/.test(url)) return;
+        // only in details view on javlibrary
+        if (!isJavLibrary || !/[a-z]{2}\/jav.*/.test(url)) return;
 
         await getAvid();
         if (!avid) {
-            console.log("getVideoThumbnailUrl: no AVID");
+            log("[thumbs] no AVID");
             return;
         }
 
         function addVideoThumbnails(targetImageUrl) {
             if (document.querySelector("#videoThumbnails")) return;
 
-            console.log("Image URL being displayed: " + targetImageUrl);
+            log("[thumbs] Image URL being displayed: " + targetImageUrl);
             const targetElement = document.querySelector("#video_jacket");
 
             if (targetElement) {
@@ -2014,26 +2608,34 @@ async function addVideoThumbnails() {
         }
 
         async function findThumbnails(avid) {
-            const sources = [
-                { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },
+            const remoteSources = [
                 { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
                 { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
+                { name: "3xPlanet", fetcher: getVideoThumbnailUrlFrom3xPlanet },
             ];
 
             try {
-                for (let source of sources) {
-                    const imageUrl = await source.fetcher(avid);
+                // JavLibrary is a local DOM lookup — check first without extra requests
+                const javLibraryUrl = await getVideoThumbnailUrlFromJavLibrary(avid);
+                if (javLibraryUrl) {
+                    log("[thumbs] Image URL found on JavLibrary:", javLibraryUrl);
+                    addVideoThumbnails(javLibraryUrl);
+                    return;
+                }
+                log("[thumbs] No usable preview image found on JavLibrary");
 
-                    if (imageUrl) {
-                        console.log(`Image URL found on ${source.name}: ${imageUrl}`);
-                        addVideoThumbnails(imageUrl);
+                // Run remaining sources in parallel, pick first non-null in priority order
+                const results = await Promise.all(remoteSources.map((s) => s.fetcher(avid).catch(() => null)));
+                for (let i = 0; i < remoteSources.length; i++) {
+                    if (results[i]) {
+                        log(`[thumbs] Image URL found on ${remoteSources[i].name}:`, results[i]);
+                        addVideoThumbnails(results[i]);
                         return;
                     }
-
-                    console.log(`No usable preview image found on ${source.name}`);
+                    log(`[thumbs] No usable preview image found on ${remoteSources[i].name}`);
                 }
 
-                console.log("No preview image found from any source");
+                log("[thumbs] No preview image found from any source");
                 addVideoThumbnails(null);
             } catch (error) {
                 console.error("Error during thumbnail search:", error);
@@ -2042,6 +2644,14 @@ async function addVideoThumbnails() {
         }
 
         findThumbnails(avid);
+    }
+
+    function normalizeImageUrl(url) {
+        return url
+            .replace("thumbs", "images")
+            .replace("//t", "//img")
+            .replace(/[\?*\"*]/g, "")
+            .replace("/th/", "/i/");
     }
 
     // Get big preview image URL from JavLibrary
@@ -2078,11 +2688,7 @@ async function addVideoThumbnails() {
             }
 
             if (targetImageUrl) {
-                targetImageUrl = targetImageUrl
-                    .replace("thumbs", "images")
-                    .replace("//t", "//img")
-                    .replace(/[\?*\"*]/g, "")
-                    .replace("/th/", "/i/");
+                targetImageUrl = normalizeImageUrl(targetImageUrl);
                 if (/imagehaha/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
                 if (/pixhost/gi.test(targetImageUrl))
                     targetImageUrl = targetImageUrl.replace(/\/t(\d+)\.pixhost\.to\//, "/img$1.pixhost.to/");
@@ -2133,12 +2739,7 @@ async function addVideoThumbnails() {
         }
 
         try {
-            let blobUrl = await searchLinkOnJavLibrary(avid);
-            if (blobUrl) {
-                return blobUrl;
-            } else {
-                return null;
-            }
+            return (await searchLinkOnJavLibrary(avid)) ?? null;
         } catch (error) {
             console.error("Error fetching preview image URL from JAV Library:", error);
             return null;
@@ -2154,7 +2755,7 @@ async function addVideoThumbnails() {
                 console.error("Connection error when searching on BlogJAV");
                 return null;
             }
-            return findLinkInDocument(result.responseText, avid, ".entry-title a");
+            return findLinkInDocument(result.responseText, avid, ".entry-title a", searchUrl);
         }
 
         async function fetchImageUrl(linkUrl) {
@@ -2167,11 +2768,7 @@ async function addVideoThumbnails() {
 
             if (imageNodeList.length > 0) {
                 let targetImageUrl = imageNodeList[imageNodeList.length - 1].dataset.src;
-                targetImageUrl = targetImageUrl
-                    .replace("thumbs", "images")
-                    .replace("//t", "//img")
-                    .replace(/[\?*\"*]/g, "")
-                    .replace("/th/", "/i/");
+                targetImageUrl = normalizeImageUrl(targetImageUrl);
                 if (/imagetwist/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
 
                 // check if only a picture removed image is shown
@@ -2195,7 +2792,7 @@ async function addVideoThumbnails() {
                         }
                     })
                     .catch((error) => {
-                        console.log("The image URL obtained from BlogJAV has been removed or failed to load: " + error.message);
+                        log("[thumbs] The image URL obtained from BlogJAV has been removed or failed to load: " + error.message);
                         return null;
                     });
             }
@@ -2205,7 +2802,7 @@ async function addVideoThumbnails() {
         try {
             let link = await searchLinkOnBlogjav(avid);
             if (link) {
-                return await fetchImageUrl(link.href);
+                return await fetchImageUrl(link);
             } else {
                 return null;
             }
@@ -2217,73 +2814,94 @@ async function addVideoThumbnails() {
 
     // Get big preview image URL from JavStore
     async function getVideoThumbnailUrlFromJavStore(avid) {
-        async function searchLinkOnJavStore(avid) {
-            const searchUrl = `https://javstore.net/search/${avid}.html`;
+        async function searchLink(avid) {
+            const searchUrl = `https://javstore.net/search?q=${avid}`;
             const result = await xmlhttpRequest(searchUrl);
-
             if (!result.isSuccess) {
                 console.error("Connection error when searching on JavStore");
                 return null;
             }
-
-            return findLinkInDocument(result.responseText, avid, `.news_1n li h3 span a`);
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            const avidSlug = avid.replace(/-/g, ""); // JavStore URLs omit the dash (e.g. "abc123" not "abc-123")
+            const linkEl = doc.querySelector(`a[href*="${avidSlug}" i]`);
+            if (!linkEl) return null;
+            const href = linkEl.getAttribute("href");
+            return href.startsWith("http") ? href : new URL(href, "https://javstore.net/").href;
         }
 
         async function fetchImageUrl(linkUrl) {
-            const result = await xmlhttpRequest(linkUrl, "https://pixhost.to/");
-
-            if (!result.isSuccess) {
-                console.error("Connection error when searching on JavStore");
-                return null;
-            }
-
+            const result = await xmlhttpRequest(linkUrl);
+            if (!result.isSuccess) return null;
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const imageNodeList = doc.querySelectorAll('.news a font[size*="+1"],.news a img[alt*=".th"]');
-            let imageUrl = imageNodeList[imageNodeList.length - 1].parentElement.href;
-
-            if (imageNodeList.length > 0) {
-                if (!imageUrl.includes("http://")) {
-                    if (imageNodeList[0].tagName === "IMG") {
-                        imageUrl = imageNodeList[imageNodeList.length - 1].src;
-                        imageUrl = imageUrl
-                            .replace("pixhost.org", "pixhost.to")
-                            .replace(".th", "")
-                            .replace("thumbs", "images")
-                            .replace("//t", "//img")
-                            .replace(/[\?*\"*]/g, "");
-
-                        if (/imagetwist/gi.test(imageUrl)) imageUrl = imageUrl.replace(".jpg", ".jpeg");
-                    }
-                    return imageUrl;
-                } else {
-                    console.log(
-                        'The image URL obtained from JavStore has been removed or failed to load: "Picture removed" placeholder',
-                    );
-                }
-            }
-            return null;
+            const imageLink = doc.querySelector(`a[href*="img.javstore.net"][href*="${avid}_s.jpg" i]`);
+            // .href resolves relative URLs against the current tab, not the fetched page — use getAttribute + URL constructor instead
+            const rawHref = imageLink?.getAttribute("href");
+            return rawHref ? new URL(rawHref, linkUrl).href : null;
         }
 
         try {
-            const link = await searchLinkOnJavStore(avid);
+            const link = await searchLink(avid);
             if (link) {
-                const imageUrl = await fetchImageUrl(link.href);
-                return imageUrl;
-            } else {
-                return null;
+                return await fetchImageUrl(link);
             }
+            return null;
         } catch (error) {
             console.error("Error fetching preview image URL from JavStore:", error);
+            return null;
         }
     }
 
-    async function xmlhttpRequest(url, referer = "", timeout = null) {
+    // Get big preview image URL from 3xPlanet
+    async function getVideoThumbnailUrlFrom3xPlanet(avid) {
+        async function searchLink(avid) {
+            const searchUrl = `https://3xplanet.com/?s=${avid}`;
+            const result = await xmlhttpRequest(searchUrl);
+            if (!result.isSuccess) return null;
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            const el = doc.querySelector(`a[href*="${avid}" i]`);
+            if (!el) return null;
+            // .href resolves relative URLs against the current tab, not the fetched page — use getAttribute + URL constructor instead
+            const rawHref = el.getAttribute("href");
+            return rawHref ? new URL(rawHref, searchUrl).href : null;
+        }
+
+        async function fetchImageUrl(linkUrl) {
+            const result = await xmlhttpRequest(linkUrl);
+            if (!result.isSuccess) return null;
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            const thumbnailImg = doc.querySelectorAll(`img[alt^="${avid}" i]`);
+            if (!thumbnailImg || thumbnailImg.length === 0) return null;
+
+            const rawHref = thumbnailImg[thumbnailImg.length - 1].closest("a")?.getAttribute("href");
+            const imagePageUrl = rawHref ? new URL(rawHref, linkUrl).href : null;
+
+            if (!imagePageUrl) return null;
+
+            const imagePageResult = await xmlhttpRequest(imagePageUrl);
+            if (!imagePageResult.isSuccess) return null;
+            const imagePageDoc = new DOMParser().parseFromString(imagePageResult.responseText, "text/html");
+            return imagePageDoc.querySelector("#show_image")?.src ?? null;
+        }
+
+        try {
+            const link = await searchLink(avid);
+            if (link) {
+                return await fetchImageUrl(link);
+            }
+            return null;
+        } catch (error) {
+            console.error("Error fetching preview image URL from 3xPlanet:", error);
+            return null;
+        }
+    }
+
+    function xmlhttpRequest(url, referer = "", timeout = null) {
         if (timeout === null) {
-            timeout = await GM_getValue("externalDataFetchTimeout", configurationOptions.externalDataFetchTimeout.default);
+            timeout = getDataFetchTimeout();
         }
 
         return new Promise((resolve, reject) => {
-            console.log(`request: ${url}`);
+            log(`[xhr] request: ${url}`);
             let details = {
                 method: "GET",
                 url: url,
@@ -2306,11 +2924,11 @@ async function addVideoThumbnails() {
                     }
                 },
                 onerror: function (response) {
-                    console.log(`${details.url} : error`);
+                    log(`[xhr] ${details.url} : error`);
                     reject({ isSuccess: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
                 },
                 ontimeout: function (response) {
-                    console.log(`${details.url} ${details.timeout}ms timeout`);
+                    log(`[xhr] ${details.url} ${details.timeout}ms timeout`);
                     reject({ isSuccess: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
                 },
             };
@@ -2318,36 +2936,33 @@ async function addVideoThumbnails() {
         });
     }
 
-    function findLinkInDocument(responseText, avid, selector) {
+    function findLinkInDocument(responseText, avid, selector, baseUrl) {
         let link = null;
         const doc = new DOMParser().parseFromString(responseText, "text/html");
         const linkElements = doc.querySelectorAll(selector);
 
-        if (linkElements) {
-            // for debugging
-            // linkElements.forEach((element) => {
-            //     console.log(element.textContent);
-            // });
+        // check only the first 5 results
+        for (let i = 0; i < linkElements.length && i < 5; i++) {
+            // replace hyphens with optional hyphens
+            const flexibleAvid = avid.replace(/-/g, "-?");
+            // Matches AVID only if not preceded by a letter, preventing false positives for shorter AVIDs like SS-070
+            const regexp = new RegExp(`(?<![a-zA-Z])${flexibleAvid}`, "gi");
 
-            // check only the first 5 results
-            for (let i = 0; i < linkElements.length && i < 5; i++) {
-                // replace hyphens with optional hyphens
-                const flexibleAvid = avid.replace(/-/g, "-?");
-                // Matches AVID only if not preceded by a letter, preventing false positives for shorter AVIDs like SS-070
-                const regexp = new RegExp(`(?<![a-zA-Z])${flexibleAvid}`, "gi");
-
-                if (linkElements[i].innerHTML.search(regexp) > 0) {
-                    if (!link) link = linkElements[i];
-                    // prioritize the full HD version
-                    if (linkElements[i].innerHTML.search(/FHD/i) > 0) {
-                        link = linkElements[i];
-                        break;
-                    }
+            if (linkElements[i].innerHTML.search(regexp) > 0) {
+                if (!link) link = linkElements[i];
+                // prioritize the full HD version
+                if (linkElements[i].innerHTML.search(/FHD/i) > 0) {
+                    link = linkElements[i];
+                    break;
                 }
             }
         }
 
-        return link;
+        if (!link) return null;
+        // .href on a DOMParser element resolves relative URLs against the current tab's base URL, not the fetched page.
+        // getAttribute gives the raw value; new URL() resolves it correctly against the actual source URL.
+        const rawHref = link.getAttribute("href");
+        return rawHref ? new URL(rawHref, baseUrl).href : null;
     }
 
     getVideoThumbnailUrl();
@@ -2369,7 +2984,7 @@ function configurationMenu() {
                 height: 100vh;
                 background-color: rgba(0, 0, 0, 0.6);
                 z-index: 9998;
-                transition: background-color 0.3s ease;
+                transition: opacity 0.3s ease;
                 backdrop-filter: blur(4px);
             }
             .modal {
@@ -2394,6 +3009,9 @@ function configurationMenu() {
                 padding: 16px 20px;
                 color: white;
                 border-radius: 16px 16px 0 0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
             }
             .modal-title {
                 margin: 0;
@@ -2401,6 +3019,17 @@ function configurationMenu() {
                 font-weight: 600;
                 letter-spacing: 0.3px;
             }
+            .modal-close {
+                background: none;
+                border: none;
+                color: white;
+                font-size: 18px;
+                cursor: pointer;
+                opacity: 0.6;
+                line-height: 1;
+                padding: 0;
+            }
+            .modal-close:hover { opacity: 1; }
             .modal-content {
                 padding: 5px;
                 overflow-y: auto;
@@ -2514,6 +3143,42 @@ function configurationMenu() {
                 background: white;
                 box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
             }
+            .select-label {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 4px;
+                padding: 5px 12px;
+                background: white;
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+                transition: all 0.2s ease;
+            }
+            .select-label:hover {
+                border-color: #4a5568;
+                box-shadow: 0 2px 8px rgba(74, 85, 104, 0.1);
+            }
+            .select-label label {
+                font-size: 14px;
+                font-weight: 500;
+                color: #555;
+            }
+            .select-label select {
+                padding: 5px 10px;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                font-size: 14px;
+                background: #fafafa;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            .select-label select:focus {
+                outline: none;
+                border-color: #4a5568;
+                background: white;
+                box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
+            }
             .buttons-container {
                 display: flex;
                 gap: 12px;
@@ -2555,18 +3220,15 @@ function configurationMenu() {
                 transform: translateY(0);
             }
             @keyframes modalSlideIn {
-                from {
-                    opacity: 0;
-                    transform: translate(-50%, -48%) scale(0.95);
-                }
-                to {
-                    opacity: 1;
-                    transform: translate(-50%, -50%) scale(1);
-                }
+                from { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
+                to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
             }
-            .modal.show {
-                animation: modalSlideIn 0.3s ease forwards;
+            @keyframes modalSlideOut {
+                from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                to   { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
             }
+            .modal.show { animation: modalSlideIn 0.3s ease forwards; }
+            .modal.hide { animation: modalSlideOut 0.3s ease forwards; }
         `);
     };
 
@@ -2574,9 +3236,9 @@ function configurationMenu() {
     const createOverlay = () => {
         const overlay = document.createElement("div");
         overlay.className = "modal-overlay";
-        overlay.style.backgroundColor = "rgba(0, 0, 0, 0)";
+        overlay.style.opacity = "0";
         setTimeout(() => {
-            overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+            overlay.style.opacity = "1";
         }, 50);
         return overlay;
     };
@@ -2596,8 +3258,11 @@ function configurationMenu() {
         const title = document.createElement("h3");
         title.innerText = "Configuration Settings";
         title.className = "modal-title";
-        header.appendChild(title);
-        return header;
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "modal-close";
+        closeBtn.textContent = "✕";
+        header.append(title, closeBtn);
+        return { header, closeBtn };
     };
 
     // ============ ELEMENT BUILDERS ============
@@ -2681,12 +3346,24 @@ function configurationMenu() {
         return grid;
     };
 
+    const createButtonsSection = (titleText, entries, valuePrefix, option) => {
+        const section = document.createElement("div");
+        section.className = "buttons-section";
+        if (option?.category) section.dataset.category = option.category;
+        const title = document.createElement("h4");
+        title.textContent = titleText;
+        section.appendChild(title);
+        section.appendChild(createButtonsGrid(entries, valuePrefix));
+        return section;
+    };
+
     // ============ INITIALIZATION ============
     addStyles();
 
     const overlay = createOverlay();
     const modal = createModal();
-    modal.appendChild(createHeader());
+    const { header, closeBtn } = createHeader();
+    modal.appendChild(header);
 
     const content = document.createElement("div");
     content.className = "modal-content";
@@ -2719,37 +3396,35 @@ function configurationMenu() {
             if (key === "improvements") improvementsCheckbox = checkbox;
         } else if (typeof option.default === "number") {
             content.appendChild(createNumberInput(key, option));
+        } else if (option.options) {
+            const container = document.createElement("div");
+            container.className = "select-label";
+            if (option.category) container.dataset.category = option.category;
+
+            const label = document.createElement("label");
+            label.textContent = option.label;
+
+            const select = document.createElement("select");
+            const savedValue = GM_getValue(key, option.default);
+            Object.entries(option.options).forEach(([val, text]) => {
+                const opt = document.createElement("option");
+                opt.value = val;
+                opt.textContent = text;
+                if (val === savedValue) opt.selected = true;
+                select.appendChild(opt);
+            });
+            select.addEventListener("change", () => {
+                select.value === option.default ? GM_deleteValue(key) : GM_setValue(key, select.value);
+            });
+
+            container.append(label, select);
+            content.appendChild(container);
         } else if (key === "searchGroups") {
-            const section = document.createElement("div");
-            section.className = "buttons-section";
-
-            const title = document.createElement("h4");
-            title.textContent = "Searches";
-            section.appendChild(title);
-
-            const grid = createButtonsGrid(Object.entries(option));
-            section.appendChild(grid);
-
-            if (option.category) {
-                section.dataset.category = option.category;
-            }
-
-            content.appendChild(section);
+            content.appendChild(createButtonsSection("Show Search Groups", Object.entries(option), "", option));
+        } else if (key === "prefetchOnLoad") {
+            content.appendChild(createButtonsSection("Auto-prefetch on page load", Object.entries(option), "", option));
         } else if (key === "castButtons") {
-            const section = document.createElement("div");
-            section.className = "buttons-section";
-
-            const title = document.createElement("h4");
-            title.textContent = "Cast Image Search Buttons";
-            section.appendChild(title);
-
-            const grid = createButtonsGrid(Object.entries(option), "castButton");
-            section.appendChild(grid);
-
-            if (option.category) {
-                section.dataset.category = option.category;
-            }
-
+            const section = createButtonsSection("Show Cast Image Searches", Object.entries(option), "castButton", option);
             content.appendChild(section);
 
             // Update visibility based on dependencies
@@ -2803,25 +3478,351 @@ function configurationMenu() {
 
     // ============ MOUNT & EVENTS ============
     document.body.append(overlay, modal);
-    overlay.addEventListener("click", () => {
-        document.body.removeChild(overlay);
-        document.body.removeChild(modal);
-    });
+    const closeConfig = () => {
+        overlay.style.opacity = "0";
+        modal.classList.add("hide");
+        document.removeEventListener("keydown", onKeyDown, true);
+        setTimeout(() => {
+            document.body.removeChild(overlay);
+            document.body.removeChild(modal);
+        }, 300);
+    };
+    const onKeyDown = (e) => {
+        if (e.key === "Escape") closeConfig();
+    };
+    overlay.addEventListener("click", closeConfig);
+    closeBtn.addEventListener("click", closeConfig);
+    document.addEventListener("keydown", onKeyDown, true);
+}
+
+// =======================================================================================
+// News/Information Notification
+// =======================================================================================
+
+function showNewsNotification() {
+    const lastSeenNewsVersion = GM_getValue("lastSeenNewsVersion", null);
+    if (lastSeenNewsVersion === NEWS_VERSION) return;
+
+    GM_addStyle(`
+        #news-bell {
+            position: fixed;
+            bottom: 80px;
+            right: 24px;
+            width: 48px;
+            height: 48px;
+            background: #2d3748;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 9990;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        #news-bell:hover {
+            transform: scale(1.12);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+        }
+        #news-bell svg { pointer-events: none; }
+        .news-badge {
+            position: absolute;
+            top: 9px;
+            right: 9px;
+            width: 10px;
+            height: 10px;
+            background: #e53e3e;
+            border-radius: 50%;
+            border: 2px solid #2d3748;
+            pointer-events: none;
+        }
+        #news-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.5);
+            z-index: 9998;
+            backdrop-filter: blur(4px);
+            transition: opacity 0.25s ease;
+        }
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
+            to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        @keyframes modalSlideOut {
+            from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            to   { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
+        }
+        #news-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 700px;
+            max-height: 80vh;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            z-index: 9999;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            animation: modalSlideIn 0.3s ease forwards;
+        }
+        #news-modal.hide {
+            animation: modalSlideOut 0.3s ease forwards;
+        }
+        .news-header {
+            background: #2d3748;
+            padding: 16px 20px;
+            color: white;
+            border-radius: 16px 16px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .news-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .news-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+            opacity: 0.75;
+        }
+        .news-close:hover { opacity: 1; }
+        .news-body {
+            padding: 20px 24px;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 15px;
+            color: #333;
+        }
+        .news-entry + .news-entry { margin-top: 20px; border-top: 1px solid #e0e0e0; padding-top: 20px; }
+        .news-date { font-size: 12px; color: #888; margin-bottom: 12px; }
+        .news-section-label { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: #667eea; margin: 14px 0 8px; }
+        .news-list { margin: 0; padding-left: 18px; }
+        .news-list li { margin-bottom: 10px; }
+        .news-item-detail { display: none; font-size: 13px; color: #888; margin-top: 4px; line-height: 1.45; }
+        .news-item-detail.expanded { display: block; }
+        .news-toggle { cursor: pointer; font-size: 12px; color: #667eea; user-select: none; margin-left: 4px; }
+        .news-feedback { margin-top: 16px; padding: 12px 14px; background: #f0f4ff; border-left: 3px solid #667eea; border-radius: 4px; font-size: 14px; color: #4a5568; }
+        .news-footer {
+            padding: 14px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+            border-radius: 0 0 16px 16px;
+            display: flex;
+            justify-content: center;
+        }
+        .news-footer button {
+            padding: 9px 28px;
+            background: #2d3748;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: box-shadow 0.2s ease;
+        }
+        .news-footer button:hover { box-shadow: 0 4px 12px rgba(45,55,72,0.4); }
+    `);
+
+    const bell = document.createElement("div");
+    bell.id = "news-bell";
+    bell.title = "What's New in JAVLibrary Improvements UserScript";
+    bell.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        <span class="news-badge"></span>
+    `;
+
+    let onNewsKeyDown = null;
+
+    const dismissModal = () => {
+        const overlay = document.getElementById("news-overlay");
+        const modal = document.getElementById("news-modal");
+        if (!modal) return;
+        if (overlay) overlay.style.opacity = "0";
+        modal.classList.add("hide");
+        if (onNewsKeyDown) document.removeEventListener("keydown", onNewsKeyDown, true);
+        setTimeout(() => {
+            overlay?.remove();
+            modal?.remove();
+        }, 250);
+    };
+    const closeAll = async () => {
+        await GM_setValue("lastSeenNewsVersion", NEWS_VERSION);
+        bell.remove();
+        dismissModal();
+    };
+
+    const openModal = () => {
+        if (document.getElementById("news-modal")) return;
+        onNewsKeyDown = (e) => {
+            if (e.key === "Escape") dismissModal();
+        };
+        document.addEventListener("keydown", onNewsKeyDown, true);
+
+        const overlay = document.createElement("div");
+        overlay.id = "news-overlay";
+        overlay.addEventListener("click", dismissModal);
+
+        const modal = document.createElement("div");
+        modal.id = "news-modal";
+
+        const header = document.createElement("div");
+        header.className = "news-header";
+        const title = document.createElement("h3");
+        title.className = "news-title";
+        title.innerHTML = `What's New<br><span style="font-size:13px;font-weight:400;opacity:0.8;">JAVLibrary Improvements UserScript</span>`;
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "news-close";
+        closeBtn.textContent = "✕";
+        closeBtn.addEventListener("click", dismissModal);
+        header.append(title, closeBtn);
+
+        const body = document.createElement("div");
+        body.className = "news-body";
+        newsEntries.forEach(({ version, changes, feedback }) => {
+            const entry = document.createElement("div");
+            entry.className = "news-entry";
+
+            const dDiv = document.createElement("div");
+            dDiv.className = "news-date";
+            dDiv.textContent = `${version.slice(0, 4)}-${version.slice(4, 6)}-${version.slice(6, 8)}`;
+            entry.append(dDiv);
+
+            const addSection = (label, items) => {
+                if (!items?.length) return;
+                const h = document.createElement("div");
+                h.className = "news-section-label";
+                h.textContent = label;
+                const ul = document.createElement("ul");
+                ul.className = "news-list";
+                items.forEach((c) => {
+                    const li = document.createElement("li");
+                    if (typeof c === "object" && c.detail) {
+                        const main = document.createElement("span");
+                        main.textContent = c.text;
+                        const toggle = document.createElement("span");
+                        toggle.className = "news-toggle";
+                        toggle.textContent = " ▸ details";
+                        const detail = document.createElement("span");
+                        detail.className = "news-item-detail";
+                        detail.textContent = c.detail;
+                        toggle.addEventListener("click", () => {
+                            const expanded = detail.classList.toggle("expanded");
+                            toggle.textContent = expanded ? " ▾ details" : " ▸ details";
+                        });
+                        li.append(main, toggle, detail);
+                    } else {
+                        li.textContent = typeof c === "object" ? c.text : c;
+                    }
+                    ul.appendChild(li);
+                });
+                entry.append(h, ul);
+            };
+
+            addSection("Changes", changes);
+
+            if (feedback) {
+                const fb = document.createElement("div");
+                fb.className = "news-feedback";
+                fb.append(feedback.text + " ");
+                const a = document.createElement("a");
+                a.href = feedback.url;
+                a.textContent = feedback.url;
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
+                fb.appendChild(a);
+                entry.appendChild(fb);
+            }
+
+            body.appendChild(entry);
+        });
+
+        const footer = document.createElement("div");
+        footer.className = "news-footer";
+        const okBtn = document.createElement("button");
+        okBtn.textContent = "Close & Hide Notification";
+        okBtn.addEventListener("click", closeAll);
+        footer.appendChild(okBtn);
+
+        modal.append(header, body, footer);
+        document.body.append(overlay, modal);
+    };
+
+    bell.addEventListener("click", openModal);
+    document.body.appendChild(bell);
+}
+
+// =======================================================================================
+// Config Icon
+// =======================================================================================
+
+function addConfigIcon() {
+    if (!GM_getValue("configIcon", configurationOptions.configIcon.default)) return;
+
+    GM_addStyle(`
+        #config-icon {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 48px;
+            height: 48px;
+            background: #2d3748;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 9990;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        #config-icon:hover {
+            transform: scale(1.12);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+        }
+        #config-icon svg { pointer-events: none; }
+    `);
+
+    const icon = document.createElement("div");
+    icon.id = "config-icon";
+    icon.title = "Configuration (C)";
+    icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+
+    icon.addEventListener("click", configurationMenu);
+    document.body.appendChild(icon);
 }
 
 // =======================================================================================
 // Main
 // =======================================================================================
 
-async function initializeBeforeRender() {
-    const configured = await GM_getValue("improvements", configurationOptions.improvements.default);
+function initializeBeforeRender() {
+    const configured = GM_getValue("improvements", configurationOptions.improvements.default);
     if (!configured) return;
 
     addImprovementsCss();
 
     switch (true) {
         // JAV Details
-        case /[a-z]{2}\/jav.*/.test(url):
+        case isJavLibrary && /[a-z]{2}\/jav.*/.test(url):
             // on low resolutions cover image get fixed size by site javascript
             removeResizingOfCoverImage();
             break;
@@ -2837,17 +3838,14 @@ function main() {
                 location.reload();
             }, 10000);
         } else {
-            initializeBeforeRender();
+            if (isJavLibrary) initializeBeforeRender();
 
             const executeFunctions = () => {
-                // console.log("Executing functions...");
                 addImprovements();
-                addVideoThumbnails();
+                if (isJavLibrary) addVideoThumbnails();
             };
 
-            setTimeout(() => {
-                executeFunctions();
-            }, 100);
+            setTimeout(executeFunctions, 100);
         }
     }
 }

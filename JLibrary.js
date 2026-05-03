@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260503
+// @version        20260503.1
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1165,6 +1165,10 @@ function externalSearch() {
     runSearch();
 }
 
+function getDataFetchTimeout() {
+    return GM_getValue("externalDataFetchTimeout", configurationOptions.externalDataFetchTimeout.default);
+}
+
 // =======================================================================================
 // General Improvements
 // =======================================================================================
@@ -1779,10 +1783,6 @@ async function addImprovements() {
         a.dataset.bgFetch = String(bgFetch);
         div.appendChild(a);
         containerElement.appendChild(div);
-    }
-
-    function getDataFetchTimeout() {
-        return GM_getValue("externalDataFetchTimeout", configurationOptions.externalDataFetchTimeout.default);
     }
 
     function addTooltipToLink(link, text) {

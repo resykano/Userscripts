@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260504
+// @version        20260504.1
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -19,11 +19,29 @@
 // @match          *://www.akiba-online.com/search/*
 // @match          *://bt1207so.top/?find*
 // @match          *://rapidgator.net/*
+// @connect        dmm.co.jp
 // @connect        blogjav.net
 // @connect        javstore.net
+// @connect        3xplanet.com
 // @connect        pixhost.to
 // @connect        imagetwist.com
 // @connect        imagehaha.com
+// @connect        hornyjav.com
+// @connect        javmost.ws
+// @connect        jav-load.com
+// @connect        javakiba.org
+// @connect        video-jav.net
+// @connect        javgg.me
+// @connect        javx357.com
+// @connect        twojav.com
+// @connect        sextb.net
+// @connect        jable.tv
+// @connect        bigojav.com
+// @connect        highporn.net
+// @connect        bestjavporn.com
+// @connect        mm-cg.com
+// @connect        javmenu.com
+// @connect        supjav.com
 // @connect        *
 // @grant          GM_registerMenuCommand
 // @grant          GM_xmlhttpRequest
@@ -2131,7 +2149,7 @@ async function addImprovements() {
             addGroupActionButton(actionTd, "Search All", "Stream-Group", () => prefetchGroupResults("Stream-Group"));
             addSearchLinkAndOpenAllButton("HORNYJAV", "https://hornyjav.com/?s=" + avid, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("TwoJAV", "https://www.twojav.com/en/search?q=" + avid, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("JAV Most", "https://www5.javmost.com/search/" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAV Most", "https://www.javmost.ws/search/BIBIVR-152/" + avid, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("SEXTB", "https://sextb.net/search/" + avid, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("Jable", "https://jable.tv/search/" + avid + "/", "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("BIGO JAV", "https://bigojav.com/?s=" + avid, "Stream-Group", linksTd);

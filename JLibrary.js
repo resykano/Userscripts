@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260503.1
+// @version        20260504
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -2970,265 +2970,264 @@ function addVideoThumbnails() {
 }
 
 // =======================================================================================
+// Shared Modal Styles
+// =======================================================================================
+
+let _sharedModalStylesAdded = false;
+function addSharedModalStyles() {
+    if (_sharedModalStylesAdded) return;
+    _sharedModalStylesAdded = true;
+    GM_addStyle(`
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.32);
+            z-index: 9998;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            transition: opacity 0.25s ease;
+        }
+        .modal {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid rgba(0, 0, 0, 0.09);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            overflow: visible;
+            display: flex;
+            flex-direction: column;
+            color: #1a202c;
+        }
+        .modal::before {
+            content: '';
+            position: absolute;
+            inset: -12px;
+            border-radius: 22px;
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.75);
+            z-index: -1;
+            pointer-events: none;
+        }
+        .modal-header {
+            padding: 13px 16px 11px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+            border-top: 3px solid var(--accent, #667eea);
+            border-radius: 12px 12px 0 0;
+        }
+        .modal-title {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a202c;
+        }
+        .modal-close {
+            background: rgba(0, 0, 0, 0.04);
+            border: 1px solid rgba(0, 0, 0, 0.10);
+            color: #6b7280;
+            font-size: 12px;
+            cursor: pointer;
+            line-height: 1;
+            padding: 4px 7px;
+            border-radius: 5px;
+            transition: all 0.15s ease;
+        }
+        .modal-close:hover {
+            background: rgba(0, 0, 0, 0.07);
+            color: #1a202c;
+            border-color: rgba(0, 0, 0, 0.18);
+        }
+        .modal-footer {
+            padding: 11px 16px;
+            border-top: 1px solid rgba(0, 0, 0, 0.07);
+            background: rgba(0, 0, 0, 0.02);
+            border-radius: 0 0 12px 12px;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+        }
+        @keyframes modalSlideIn {
+            from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+            to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        @keyframes modalSlideOut {
+            from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            to   { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+        }
+        .modal.show { animation: modalSlideIn 0.25s ease forwards; }
+        .modal.hide { animation: modalSlideOut 0.25s ease forwards; }
+    `);
+}
+
+// =======================================================================================
 // Configuration Menu
 // =======================================================================================
 
 function configurationMenu() {
     const addStyles = () => {
+        addSharedModalStyles();
         GM_addStyle(`
-            .modal-overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100vw;
-                height: 100vh;
-                background-color: rgba(0, 0, 0, 0.6);
-                z-index: 9998;
-                transition: opacity 0.3s ease;
-                backdrop-filter: blur(4px);
-            }
-            .modal {
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                width: 480px;
-                max-height: 85vh;
-                background: #ffffff;
-                border-radius: 16px;
-                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-                z-index: 9999;
-                opacity: 0;
-                transition: opacity 0.3s ease, transform 0.3s ease;
-                overflow: hidden;
-                display: flex;
-                flex-direction: column;
-            }
-            .modal-header {
-                background: #2d3748;
-                padding: 16px 20px;
-                color: white;
-                border-radius: 16px 16px 0 0;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            .modal-title {
-                margin: 0;
-                font-size: 18px;
-                font-weight: 600;
-                letter-spacing: 0.3px;
-            }
-            .modal-close {
-                background: none;
-                border: none;
-                color: white;
-                font-size: 18px;
-                cursor: pointer;
-                opacity: 0.6;
-                line-height: 1;
-                padding: 0;
-            }
-            .modal-close:hover { opacity: 1; }
+            .modal { width: 510px; max-height: 90vh; }
             .modal-content {
-                padding: 5px;
+                padding: 6px;
                 overflow-y: auto;
                 flex: 1;
             }
-            .modal-content::-webkit-scrollbar {
-                width: 8px;
-            }
-            .modal-content::-webkit-scrollbar-track {
-                background: #f1f1f1;
-                border-radius: 10px;
-            }
-            .modal-content::-webkit-scrollbar-thumb {
-                background: #888;
-                border-radius: 10px;
-            }
-            .modal-content::-webkit-scrollbar-thumb:hover {
-                background: #555;
-            }
+            .modal-content::-webkit-scrollbar { width: 4px; }
+            .modal-content::-webkit-scrollbar-track { background: transparent; }
+            .modal-content::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 10px; }
+            .modal-content::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
             .checkbox-label {
                 display: flex;
                 align-items: center;
-                gap: 12px;
-                margin-bottom: 4px;
-                padding: 5px 12px;
-                background: white;
-                border-radius: 8px;
-                transition: all 0.2s ease;
+                gap: 10px;
+                margin-bottom: 1px;
+                padding: 6px 10px;
+                background: transparent;
+                border-radius: 5px;
+                transition: background 0.12s ease;
                 cursor: pointer;
-                border: 1px solid #e0e0e0;
             }
-            .checkbox-label:hover {
-                background: #f8f9fa;
-                border-color: #4a5568;
-                box-shadow: 0 2px 8px rgba(74, 85, 104, 0.1);
-            }
+            .checkbox-label:hover { background: rgba(0, 0, 0, 0.04); }
             .checkbox-label input[type="checkbox"] {
                 margin: 0;
                 flex-shrink: 0;
-                width: 18px;
-                height: 18px;
+                width: 14px;
+                height: 14px;
                 cursor: pointer;
-                accent-color: #4a5568;
+                accent-color: var(--accent, #667eea);
             }
-            .checkbox-label span {
-                font-size: 14px;
-                color: #333;
-                user-select: none;
-            }
+            .checkbox-label span { font-size: 13px; color: #374151; user-select: none; }
             .buttons-section {
-                margin-top: 3px;
+                margin-top: 6px;
                 margin-bottom: 3px;
-                padding: 8px;
-                background: #f8f9fa;
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
+                padding: 4px 8px 8px;
+                background: rgba(0, 0, 0, 0.02);
+                border-radius: 6px;
             }
-            .buttons-section.hidden {
-                display: none;
-            }
+            .buttons-section.hidden { display: none; }
             .buttons-section h4 {
                 margin: 0 0 6px 0;
                 font-weight: 600;
-                font-size: 15px;
-                color: #4a5568;
-                display: flex;
-                align-items: center;
-                gap: 8px;
+                font-size: 10px;
+                color: #9ca3af;
+                letter-spacing: 0.8px;
+                text-transform: uppercase;
             }
             .buttons-section .checkbox-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-                gap: 4px;
+                gap: 2px;
             }
-            .buttons-section .checkbox-label {
-                margin-bottom: 0;
-                padding: 5px 8px;
-                font-size: 13px;
-            }
+            .buttons-section .checkbox-label { margin-bottom: 0; padding: 4px 7px; font-size: 12px; }
             .input-label {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
-                margin-bottom: 4px;
-                padding: 10px 12px;
-                background: white;
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
-                transition: all 0.2s ease;
+                gap: 5px;
+                margin-bottom: 1px;
+                padding: 6px 10px;
+                background: transparent;
+                border-radius: 5px;
+                transition: background 0.12s ease;
             }
-            .input-label:hover {
-                border-color: #4a5568;
-                box-shadow: 0 2px 8px rgba(74, 85, 104, 0.1);
-            }
-            .input-label label {
-                font-size: 14px;
-                font-weight: 500;
-                color: #555;
-            }
+            .input-label:hover { background: rgba(0, 0, 0, 0.03); }
+            .input-label label { font-size: 12.5px; font-weight: 500; color: #6b7280; }
             .input-label input[type="number"] {
-                padding: 8px 10px;
-                border: 1px solid #ddd;
-                border-radius: 6px;
-                font-size: 14px;
-                transition: all 0.2s ease;
-                background: #fafafa;
+                padding: 5px 8px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                font-size: 13px;
+                transition: border-color 0.15s ease, box-shadow 0.15s ease;
+                background: white;
+                color: #1a202c;
             }
             .input-label input[type="number"]:focus {
                 outline: none;
-                border-color: #4a5568;
-                background: white;
-                box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
+                border-color: var(--accent, #667eea);
+                box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #667eea) 18%, transparent);
             }
             .select-label {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 gap: 12px;
-                margin-bottom: 4px;
-                padding: 5px 12px;
-                background: white;
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
-                transition: all 0.2s ease;
+                margin-bottom: 1px;
+                padding: 6px 10px;
+                background: transparent;
+                border-radius: 5px;
+                transition: background 0.12s ease;
             }
-            .select-label:hover {
-                border-color: #4a5568;
-                box-shadow: 0 2px 8px rgba(74, 85, 104, 0.1);
-            }
-            .select-label label {
-                font-size: 14px;
-                font-weight: 500;
-                color: #555;
-            }
-            .select-label select {
-                padding: 5px 10px;
-                border: 1px solid #ddd;
-                border-radius: 6px;
-                font-size: 14px;
-                background: #fafafa;
-                cursor: pointer;
-                transition: all 0.2s ease;
-            }
-            .select-label select:focus {
-                outline: none;
-                border-color: #4a5568;
-                background: white;
-                box-shadow: 0 0 0 3px rgba(74, 85, 104, 0.1);
-            }
-            .buttons-container {
+            .select-label:hover { background: rgba(0, 0, 0, 0.04); }
+            .select-label label { font-size: 13px; font-weight: 500; color: #374151; }
+            .custom-select-trigger {
                 display: flex;
-                gap: 12px;
-                justify-content: center;
-                padding: 16px 20px;
-                background: #f8f9fa;
-                border-radius: 0 0 16px 16px;
-                border-top: 1px solid #e0e0e0;
-            }
-            .buttons-container button {
-                padding: 10px 20px;
-                font-size: 14px;
-                font-weight: 500;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                min-width: 140px;
-            }
-            .buttons-container button:first-child {
+                align-items: center;
+                gap: 7px;
+                padding: 4px 9px;
                 background: white;
-                color: #4a5568;
-                border: 2px solid #4a5568;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                font-size: 13px;
+                color: #374151;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                user-select: none;
+                white-space: nowrap;
             }
-            .buttons-container button:first-child:hover {
-                background: #4a5568;
-                color: white;
-                box-shadow: 0 4px 12px rgba(74, 85, 104, 0.3);
+            .custom-select-trigger:hover { background: #f9fafb; border-color: #9ca3af; }
+            .custom-select-trigger.open { border-color: var(--accent, #667eea); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #667eea) 18%, transparent); }
+            .custom-select-trigger svg { flex-shrink: 0; transition: transform 0.15s ease; }
+            .custom-select-trigger.open svg { transform: rotate(180deg); }
+            .custom-select-panel {
+                position: fixed;
+                z-index: 10000;
+                min-width: 120px;
+                background: white;
+                border: 1px solid rgba(0, 0, 0, 0.1);
+                border-radius: 6px;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+                padding: 3px;
+                animation: selectFadeIn 0.12s ease forwards;
             }
-            .buttons-container button:last-child {
-                background: #2d3748;
+            @keyframes selectFadeIn {
+                from { opacity: 0; transform: translateY(-3px); }
+                to   { opacity: 1; transform: translateY(0); }
+            }
+            .custom-select-option { padding: 6px 10px; font-size: 13px; color: #374151; border-radius: 4px; cursor: pointer; transition: background 0.1s ease; white-space: nowrap; }
+            .custom-select-option:hover { background: color-mix(in srgb, var(--accent, #667eea) 8%, transparent); color: #1a202c; }
+            .custom-select-option.selected { background: color-mix(in srgb, var(--accent, #667eea) 12%, transparent); color: var(--accent, #667eea); font-weight: 500; }
+            .modal-footer button {
+                padding: 7px 18px;
+                font-size: 13px;
+                font-weight: 500;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                min-width: 120px;
+            }
+            .modal-footer button:first-child {
+                background: white;
+                color: #6b7280;
+                border: 1px solid #d1d5db;
+            }
+            .modal-footer button:first-child:hover { background: #f9fafb; color: #374151; border-color: #9ca3af; }
+            .modal-footer button:last-child {
+                background: var(--btn-bg, #e8687a);
                 color: white;
                 border: none;
             }
-            .buttons-container button:last-child:hover {
-                box-shadow: 0 4px 12px rgba(74, 85, 104, 0.4);
-            }
-            .buttons-container button:active {
-                transform: translateY(0);
-            }
-            @keyframes modalSlideIn {
-                from { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
-                to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-            }
-            @keyframes modalSlideOut {
-                from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-                to   { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
-            }
-            .modal.show { animation: modalSlideIn 0.3s ease forwards; }
-            .modal.hide { animation: modalSlideOut 0.3s ease forwards; }
+            .modal-footer button:last-child:hover { background: var(--btn-bg-hover, #d0526a); }
+            .modal-footer button:active { transform: translateY(1px); }
         `);
     };
 
@@ -3316,6 +3315,85 @@ function configurationMenu() {
         return container;
     };
 
+    const createCustomSelect = (key, option) => {
+        const container = document.createElement("div");
+        container.className = "select-label";
+        if (option.category) container.dataset.category = option.category;
+
+        const label = document.createElement("label");
+        label.textContent = option.label;
+
+        let currentValue = GM_getValue(key, option.default);
+
+        const trigger = document.createElement("div");
+        trigger.className = "custom-select-trigger";
+
+        const triggerText = document.createElement("span");
+        triggerText.textContent = option.options[currentValue] ?? currentValue;
+
+        const arrowSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        arrowSvg.setAttribute("width", "10");
+        arrowSvg.setAttribute("height", "10");
+        arrowSvg.setAttribute("viewBox", "0 0 10 10");
+        arrowSvg.setAttribute("fill", "none");
+        const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        arrowPath.setAttribute("points", "1,3 5,7 9,3");
+        arrowPath.setAttribute("stroke", "#9ca3af");
+        arrowPath.setAttribute("stroke-opacity", "1");
+        arrowPath.setAttribute("stroke-width", "1.5");
+        arrowPath.setAttribute("stroke-linecap", "round");
+        arrowPath.setAttribute("stroke-linejoin", "round");
+        arrowSvg.appendChild(arrowPath);
+        trigger.append(triggerText, arrowSvg);
+
+        let panel = null;
+
+        const closePanel = () => {
+            if (!panel) return;
+            panel.remove();
+            panel = null;
+            trigger.classList.remove("open");
+        };
+
+        trigger.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (panel) {
+                closePanel();
+                return;
+            }
+
+            trigger.classList.add("open");
+            panel = document.createElement("div");
+            panel.className = "custom-select-panel";
+
+            Object.entries(option.options).forEach(([val, text]) => {
+                const opt = document.createElement("div");
+                opt.className = "custom-select-option" + (val === currentValue ? " selected" : "");
+                opt.textContent = text;
+                opt.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    currentValue = val;
+                    triggerText.textContent = text;
+                    val === option.default ? GM_deleteValue(key) : GM_setValue(key, val);
+                    closePanel();
+                });
+                panel.appendChild(opt);
+            });
+
+            document.body.appendChild(panel);
+            const rect = trigger.getBoundingClientRect();
+            panel.style.left = rect.left + "px";
+            panel.style.top = rect.bottom + 4 + "px";
+            const pr = panel.getBoundingClientRect();
+            if (pr.bottom > window.innerHeight - 8) panel.style.top = rect.top - pr.height - 4 + "px";
+
+            setTimeout(() => document.addEventListener("click", closePanel, { once: true }), 0);
+        });
+
+        container.append(label, trigger);
+        return container;
+    };
+
     const createButtonsGrid = (entries, valuePrefix = "") => {
         const grid = document.createElement("div");
         grid.className = "checkbox-grid";
@@ -3397,28 +3475,7 @@ function configurationMenu() {
         } else if (typeof option.default === "number") {
             content.appendChild(createNumberInput(key, option));
         } else if (option.options) {
-            const container = document.createElement("div");
-            container.className = "select-label";
-            if (option.category) container.dataset.category = option.category;
-
-            const label = document.createElement("label");
-            label.textContent = option.label;
-
-            const select = document.createElement("select");
-            const savedValue = GM_getValue(key, option.default);
-            Object.entries(option.options).forEach(([val, text]) => {
-                const opt = document.createElement("option");
-                opt.value = val;
-                opt.textContent = text;
-                if (val === savedValue) opt.selected = true;
-                select.appendChild(opt);
-            });
-            select.addEventListener("change", () => {
-                select.value === option.default ? GM_deleteValue(key) : GM_setValue(key, select.value);
-            });
-
-            container.append(label, select);
-            content.appendChild(container);
+            content.appendChild(createCustomSelect(key, option));
         } else if (key === "searchGroups") {
             content.appendChild(createButtonsSection("Show Search Groups", Object.entries(option), "", option));
         } else if (key === "prefetchOnLoad") {
@@ -3445,7 +3502,7 @@ function configurationMenu() {
 
     // ============ BUTTONS ============
     const buttonsContainer = document.createElement("div");
-    buttonsContainer.className = "buttons-container";
+    buttonsContainer.className = "modal-footer";
 
     const resetButton = document.createElement("button");
     resetButton.innerText = "Reset to Defaults";
@@ -3503,140 +3560,66 @@ function showNewsNotification() {
     const lastSeenNewsVersion = GM_getValue("lastSeenNewsVersion", null);
     if (lastSeenNewsVersion === NEWS_VERSION) return;
 
+    addSharedModalStyles();
     GM_addStyle(`
         #news-bell {
             position: fixed;
-            bottom: 80px;
-            right: 24px;
-            width: 48px;
-            height: 48px;
-            background: #2d3748;
+            bottom: 80px; right: 24px;
+            width: 40px; height: 40px;
+            background: var(--accent, #667eea);
             color: white;
             border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border: none;
+            display: flex; align-items: center; justify-content: center;
             cursor: pointer;
             z-index: 9990;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
-        #news-bell:hover {
-            transform: scale(1.12);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.45);
-        }
+        #news-bell:hover { transform: scale(1.1); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
         #news-bell svg { pointer-events: none; }
         .news-badge {
             position: absolute;
-            top: 9px;
-            right: 9px;
-            width: 10px;
-            height: 10px;
+            top: 7px; right: 7px;
+            width: 9px; height: 9px;
             background: #e53e3e;
             border-radius: 50%;
-            border: 2px solid #2d3748;
+            border: 2px solid white;
             pointer-events: none;
         }
-        #news-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.5);
-            z-index: 9998;
-            backdrop-filter: blur(4px);
-            transition: opacity 0.25s ease;
-        }
-        @keyframes modalSlideIn {
-            from { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
-            to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-        }
-        @keyframes modalSlideOut {
-            from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-            to   { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
-        }
-        #news-modal {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 700px;
-            max-height: 80vh;
-            background: #fff;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            z-index: 9999;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            animation: modalSlideIn 0.3s ease forwards;
-        }
-        #news-modal.hide {
-            animation: modalSlideOut 0.3s ease forwards;
-        }
-        .news-header {
-            background: #2d3748;
-            padding: 16px 20px;
-            color: white;
-            border-radius: 16px 16px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .news-title {
-            margin: 0;
-            font-size: 18px;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-        }
-        .news-close {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 20px;
-            cursor: pointer;
-            padding: 0 4px;
-            line-height: 1;
-            opacity: 0.75;
-        }
-        .news-close:hover { opacity: 1; }
+        #news-modal { width: 700px; max-height: 80vh; }
         .news-body {
-            padding: 20px 24px;
+            padding: 14px 16px;
             overflow-y: auto;
             flex: 1;
-            font-size: 15px;
-            color: #333;
+            font-size: 13.5px;
+            color: #374151;
         }
-        .news-entry + .news-entry { margin-top: 20px; border-top: 1px solid #e0e0e0; padding-top: 20px; }
-        .news-date { font-size: 12px; color: #888; margin-bottom: 12px; }
-        .news-section-label { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: #667eea; margin: 14px 0 8px; }
-        .news-list { margin: 0; padding-left: 18px; }
-        .news-list li { margin-bottom: 10px; }
-        .news-item-detail { display: none; font-size: 13px; color: #888; margin-top: 4px; line-height: 1.45; }
+        .news-body::-webkit-scrollbar { width: 4px; }
+        .news-body::-webkit-scrollbar-track { background: transparent; }
+        .news-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+        .news-body::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+        .news-entry + .news-entry { margin-top: 16px; border-top: 1px solid rgba(0,0,0,0.07); padding-top: 16px; }
+        .news-date { font-size: 11px; color: #9ca3af; margin-bottom: 10px; letter-spacing: 0.3px; }
+        .news-section-label { font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--accent, #667eea); margin: 12px 0 6px; }
+        .news-list { margin: 0; padding-left: 16px; }
+        .news-list li { margin-bottom: 6px; color: #374151; }
+        .news-item-detail { display: none; font-size: 12px; color: #6b7280; margin-top: 3px; line-height: 1.45; }
         .news-item-detail.expanded { display: block; }
-        .news-toggle { cursor: pointer; font-size: 12px; color: #667eea; user-select: none; margin-left: 4px; }
-        .news-feedback { margin-top: 16px; padding: 12px 14px; background: #f0f4ff; border-left: 3px solid #667eea; border-radius: 4px; font-size: 14px; color: #4a5568; }
-        .news-footer {
-            padding: 14px 20px;
-            background: #f8f9fa;
-            border-top: 1px solid #e0e0e0;
-            border-radius: 0 0 16px 16px;
-            display: flex;
-            justify-content: center;
-        }
-        .news-footer button {
-            padding: 9px 28px;
-            background: #2d3748;
+        .news-toggle { cursor: pointer; font-size: 11.5px; color: var(--accent, #667eea); user-select: none; margin-left: 4px; }
+        .news-feedback { margin-top: 12px; padding: 9px 12px; background: color-mix(in srgb, var(--accent, #667eea) 7%, transparent); border-left: 3px solid var(--accent, #667eea); border-radius: 3px; font-size: 13px; color: #4a5568; }
+        #news-modal .modal-footer button {
+            padding: 7px 24px;
+            background: var(--btn-bg, #e8687a);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
-            transition: box-shadow 0.2s ease;
+            transition: background 0.15s ease;
         }
-        .news-footer button:hover { box-shadow: 0 4px 12px rgba(45,55,72,0.4); }
+        #news-modal .modal-footer button:hover { background: var(--btn-bg-hover, #d0526a); }
     `);
 
     const bell = document.createElement("div");
@@ -3678,18 +3661,21 @@ function showNewsNotification() {
 
         const overlay = document.createElement("div");
         overlay.id = "news-overlay";
+        overlay.className = "modal-overlay";
         overlay.addEventListener("click", dismissModal);
 
         const modal = document.createElement("div");
         modal.id = "news-modal";
+        modal.className = "modal";
+        setTimeout(() => modal.classList.add("show"), 50);
 
         const header = document.createElement("div");
-        header.className = "news-header";
+        header.className = "modal-header";
         const title = document.createElement("h3");
-        title.className = "news-title";
+        title.className = "modal-title";
         title.innerHTML = `What's New<br><span style="font-size:13px;font-weight:400;opacity:0.8;">JAVLibrary Improvements UserScript</span>`;
         const closeBtn = document.createElement("button");
-        closeBtn.className = "news-close";
+        closeBtn.className = "modal-close";
         closeBtn.textContent = "✕";
         closeBtn.addEventListener("click", dismissModal);
         header.append(title, closeBtn);
@@ -3755,7 +3741,7 @@ function showNewsNotification() {
         });
 
         const footer = document.createElement("div");
-        footer.className = "news-footer";
+        footer.className = "modal-footer";
         const okBtn = document.createElement("button");
         okBtn.textContent = "Close & Hide Notification";
         okBtn.addEventListener("click", closeAll);

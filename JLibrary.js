@@ -3021,20 +3021,19 @@ function addSharedModalStyles() {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.07);
-            border-top: 3px solid var(--accent, #667eea);
+            background: var(--accent, #667eea);
             border-radius: 12px 12px 0 0;
         }
         .modal-title {
             margin: 0;
             font-size: 14px;
             font-weight: 600;
-            color: #1a202c;
+            color: white;
         }
         .modal-close {
-            background: rgba(0, 0, 0, 0.04);
-            border: 1px solid rgba(0, 0, 0, 0.10);
-            color: #6b7280;
+            background: rgba(0, 0, 0, 0.15);
+            border: none;
+            color: rgba(255, 255, 255, 0.8);
             font-size: 12px;
             cursor: pointer;
             line-height: 1;
@@ -3043,9 +3042,8 @@ function addSharedModalStyles() {
             transition: all 0.15s ease;
         }
         .modal-close:hover {
-            background: rgba(0, 0, 0, 0.07);
-            color: #1a202c;
-            border-color: rgba(0, 0, 0, 0.18);
+            background: rgba(0, 0, 0, 0.25);
+            color: white;
         }
         .modal-footer {
             padding: 11px 16px;

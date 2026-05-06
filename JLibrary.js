@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260504.1
+// @version        20260506
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -544,6 +544,10 @@ function addImprovementsCss() {
     }`);
 
     GM_addStyle(`
+        // html, body, * {
+        //     font-family: system-ui, sans-serif !important;
+        //     font-size: 13px;
+        // }
         a {
             color: var(--accent);
         }
@@ -594,6 +598,15 @@ function addImprovementsCss() {
             #rightcolumn {
                 margin-left: 10px;
             }
+        }
+
+        /* search results layout
+        /* Prevents text from being cut off vertically in Chromium when non-ASCII characters are present */
+        .videothumblist .videos .video .title {
+            display: -webkit-box;
+            height: unset;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
         }
 
         /* search area layout */
@@ -718,7 +731,6 @@ function addImprovementsCss() {
             color: #a0aec0;
             border-color: #dde3ee;
         }
-
         /* prefetch result indicators */
         .prefetch-found { color: #4ade80 !important; }
         .prefetch-found:visited { color: #4ade80 !important; }
@@ -758,6 +770,10 @@ function addImprovementsCss() {
                 #video_title h3.post-title {
                     padding-right: 78px;
                     top: 30px;
+                }
+                #video_title {
+                    border-bottom: unset !important;
+                    margin-bottom: 10px
                 }
                 
                 #video_info {
@@ -1846,6 +1862,12 @@ async function addImprovements() {
 
                     // Check if the avid is present in any link on the page (case-insensitive)
                     const doc = parser.parseFromString(response.responseText, "text/html");
+                    if (!doc.body || doc.body.children.length === 0) {
+                        log(`[prefetch] ${link.textContent.trim()}: empty HTML body`);
+                        link.classList.add("prefetch-error");
+                        addTooltipToLink(link, "Empty response");
+                        return;
+                    }
                     const found = findAllVideoUrlsInDoc(doc, avid, link.href).length > 0;
                     log(`[prefetch] ${link.textContent.trim()}: ${found ? "found" : "not found"}`);
                     link.classList.add(found ? "prefetch-found" : "prefetch-not-found");
@@ -1883,6 +1905,7 @@ async function addImprovements() {
     }
 
     function isCloudflare(html) {
+        if (!html) return false;
         return html.includes("Just a moment") || html.includes("cf-browser-verification");
     }
 
@@ -2625,6 +2648,15 @@ function addVideoThumbnails() {
             }
         }
 
+        function isImageTallEnough(url) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(img.naturalHeight >= 500);
+                img.onerror = () => resolve(false);
+                img.src = url;
+            });
+        }
+
         async function findThumbnails(avid) {
             const remoteSources = [
                 { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
@@ -2636,16 +2668,19 @@ function addVideoThumbnails() {
                 // JavLibrary is a local DOM lookup — check first without extra requests
                 const javLibraryUrl = await getVideoThumbnailUrlFromJavLibrary(avid);
                 if (javLibraryUrl) {
-                    log("[thumbs] Image URL found on JavLibrary:", javLibraryUrl);
-                    addVideoThumbnails(javLibraryUrl);
-                    return;
+                    if (await isImageTallEnough(javLibraryUrl)) {
+                        log("[thumbs] Image URL found on JavLibrary:", javLibraryUrl);
+                        addVideoThumbnails(javLibraryUrl);
+                        return;
+                    }
+                    log("[thumbs] Image from JavLibrary rejected: height < 500px");
                 }
                 log("[thumbs] No usable preview image found on JavLibrary");
 
                 // Run remaining sources in parallel, pick first non-null in priority order
                 const results = await Promise.all(remoteSources.map((s) => s.fetcher(avid).catch(() => null)));
                 for (let i = 0; i < remoteSources.length; i++) {
-                    if (results[i]) {
+                    if (results[i] && await isImageTallEnough(results[i])) {
                         log(`[thumbs] Image URL found on ${remoteSources[i].name}:`, results[i]);
                         addVideoThumbnails(results[i]);
                         return;
@@ -3007,6 +3042,7 @@ function addSharedModalStyles() {
             transition: opacity 0.25s ease;
         }
         .modal {
+            font-family: system-ui, sans-serif;
             position: fixed;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);

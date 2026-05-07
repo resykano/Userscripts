@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260506
+// @version        20260507
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -470,7 +470,6 @@ function findAllVideoUrlsInDoc(doc, avid, baseUrl) {
     const seen = new Set();
     const results = [];
     const anchors = doc.querySelectorAll("a[href]");
-    // devLog(`[findAllVideoUrlsInDoc] avid="${avid}" baseUrl="${baseUrl}" anchors=${anchors.length}`);
 
     for (const a of anchors) {
         let resolved;
@@ -488,10 +487,11 @@ function findAllVideoUrlsInDoc(doc, avid, baseUrl) {
         if (new URL(resolved).hostname !== baseDomain) continue;
 
         const normalized = resolved.toLowerCase();
+        const urlPath = new URL(resolved).pathname.toLowerCase();
 
-        // match by href (URL contains AVID) or title attribute — but never search/listing pages
+        // match by href (AVID in URL path, not just query string) or title attribute — but never search/listing pages
         const titleMatch = (a.getAttribute("title") || "").toLowerCase().includes(lower);
-        const hrefMatch = normalized.includes(lower) && !/[?&]s=/.test(normalized) && !/\/search\//.test(normalized);
+        const hrefMatch = urlPath.includes(lower) && !/\/search(\/|$)/.test(urlPath);
 
         if ((hrefMatch || titleMatch) && !seen.has(normalized)) {
             log(`[findAllVideoUrlsInDoc] match (${titleMatch ? "title" : "href"}): ${resolved}`);

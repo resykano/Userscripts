@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260507
+// @version        20260508
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -768,7 +768,7 @@ function addImprovementsCss() {
                     top: 45px;
                 }
                 #video_title h3.post-title {
-                    padding-right: 78px;
+                    padding-right: 117px;
                     top: 30px;
                 }
                 #video_title {
@@ -1627,7 +1627,7 @@ async function addImprovements() {
     async function addTitleCopyPerClick() {
         let titleElement = await getTitleElement();
 
-        const clipboardSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+        const clipboardSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M2.75,4.5 C2.75,3.535 3.535,2.75 4.5,2.75 L8,2.75 L8,1 C8,0.448 7.553,0 7,0 L1,0 C0.447,0 0,0.448 0,1 L0,7 C0,7.552 0.447,8 1,8 L2.75,8 L2.75,4.5 Z"></path><path d="M11,4 L5,4 C4.447,4 4,4.448 4,5 L4,11 C4,11.552 4.447,12 5,12 L11,12 C11.553,12 12,11.552 12,11 L12,5 C12,4.448 11.553,4 11,4"></path></svg>`;
         const checkSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
 
         GM_addStyle(`
@@ -1640,7 +1640,7 @@ async function addImprovements() {
                 transition: opacity 0.2s, color 0.2s;
                 color: inherit;
             }
-            .copy-icon:hover { opacity: 0.75; }
+            #video_id > table > tbody > tr > td.text:hover .copy-icon { opacity: 0.75; }
             .copy-icon.copied { color: #4caf50; opacity: 1; }
         `);
 
@@ -2680,7 +2680,7 @@ function addVideoThumbnails() {
                 // Run remaining sources in parallel, pick first non-null in priority order
                 const results = await Promise.all(remoteSources.map((s) => s.fetcher(avid).catch(() => null)));
                 for (let i = 0; i < remoteSources.length; i++) {
-                    if (results[i] && await isImageTallEnough(results[i])) {
+                    if (results[i] && (await isImageTallEnough(results[i]))) {
                         log(`[thumbs] Image URL found on ${remoteSources[i].name}:`, results[i]);
                         addVideoThumbnails(results[i]);
                         return;

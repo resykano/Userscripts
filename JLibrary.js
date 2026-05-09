@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Many improvements mainly in details view of a video: video thumbnails below cover (deactivatable through Configuration in the browser extension menu), easier collect of Google Drive and Rapidgator links for JDownloader (hotkey < or \), save/show favorite actresses (since script installation), recherche links for actresses, auto reload on Cloudflare rate limit, save cover with actress names just by clicking, advertising photos in full size, remove redirects, layout improvements
-// @version        20260508
+// @version        20260509
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -461,10 +461,11 @@ function waitForElement(selector, index = 0, timeoutMs = 0) {
     });
 }
 
-// Finds all video page links in a document that match the given AVID.
-// Works for both live documents and DOMParser-parsed documents (background fetch).
-// Returns original-case absolute URLs, deduplicated.
-function findAllVideoUrlsInDoc(doc, avid, baseUrl) {
+// Scans a document (live page or DOMParser-fetched HTML) for links to the video
+// page matching the given AVID. Used to verify that a search results page actually
+// contains the target video before navigating there.
+// Returns deduplicated, original-case absolute URLs.
+function findVideoUrlsForAVID(doc, avid, baseUrl) {
     const lower = avid.toLowerCase();
     const baseDomain = new URL(baseUrl).hostname;
     const seen = new Set();
@@ -479,7 +480,7 @@ function findAllVideoUrlsInDoc(doc, avid, baseUrl) {
             u.hash = ""; // strip fragments like /#more so they don't create duplicates
             resolved = u.href;
         } catch {
-            console.warn(`[findAllVideoUrlsInDoc] invalid href skipped: "${a.getAttribute("href")}"`);
+            console.warn(`[findVideoUrlsForAVID] invalid href skipped: "${a.getAttribute("href")}"`);
             continue;
         }
 
@@ -489,12 +490,14 @@ function findAllVideoUrlsInDoc(doc, avid, baseUrl) {
         const normalized = resolved.toLowerCase();
         const urlPath = new URL(resolved).pathname.toLowerCase();
 
-        // match by href (AVID in URL path, not just query string) or title attribute — but never search/listing pages
+        // match by href (AVID in URL path, not just query string), title attribute, or anchor text content — but never search/listing pages
         const titleMatch = (a.getAttribute("title") || "").toLowerCase().includes(lower);
+        const textMatch = a.textContent.toLowerCase().includes(lower);
         const hrefMatch = urlPath.includes(lower) && !/\/search(\/|$)/.test(urlPath);
 
-        if ((hrefMatch || titleMatch) && !seen.has(normalized)) {
-            log(`[findAllVideoUrlsInDoc] match (${titleMatch ? "title" : "href"}): ${resolved}`);
+        if ((hrefMatch || titleMatch || textMatch) && !seen.has(normalized)) {
+            const matchType = hrefMatch ? "href" : titleMatch ? "title" : "text";
+            log(`[findVideoUrlsForAVID] match (${matchType}): ${resolved}`);
             seen.add(normalized);
             results.push(resolved);
         }
@@ -620,7 +623,7 @@ function addImprovementsCss() {
             flex-wrap: wrap;
             align-items: center;
             align-content: center;
-            gap: 3px 4px;
+            gap: 4px 4px;
             padding-left: 3px !important;
         }
         #video_search td.text .added-links {
@@ -629,7 +632,6 @@ function addImprovementsCss() {
             height: auto;
             align-items: center;
             justify-content: flex-start;
-            gap: 6px;
             margin-bottom: 0;
         }
         #video_search td.header {
@@ -733,7 +735,6 @@ function addImprovementsCss() {
         }
         /* prefetch result indicators */
         .prefetch-found { color: #4ade80 !important; }
-        .prefetch-found:visited { color: #4ade80 !important; }
         .prefetch-found:hover { color: white !important; background: #4ade80 !important; border-color: #4ade80 !important; }
 
         .prefetch-not-found { color: #de4a4a !important; }
@@ -741,9 +742,11 @@ function addImprovementsCss() {
 
         .prefetch-error { border-style: dashed !important; border-color: orange !important; color: orange !important; position: relative; }
         .prefetch-error:hover { color: white !important; background: orange !important; border-color: orange !important; }
+        .prefetch-error .prefetch-tooltip { background: orange; }
 
-        .prefetch-cloudflare { border-style: dashed !important; border-color: #888 !important; color: #888 !important; position: relative; }
-        .prefetch-cloudflare:hover { color: white !important; background: #888 !important; border-color: #888 !important; }
+        .prefetch-unavailable { border-style: dashed !important; border-color: #888 !important; color: #888 !important; position: relative; }
+        .prefetch-unavailable:hover { color: white !important; background: #888 !important; border-color: #888 !important; }
+        .prefetch-unavailable .prefetch-tooltip { background: #888; }
 
         .prefetch-tooltip {
             position: absolute;
@@ -756,8 +759,6 @@ function addImprovementsCss() {
             white-space: nowrap;
             pointer-events: none;
         }
-        .prefetch-error .prefetch-tooltip { background: orange; }
-        .prefetch-cloudflare .prefetch-tooltip { background: #888; }
     `);
 
     switch (true) {
@@ -1061,7 +1062,7 @@ function externalSearch() {
         // poll until results appear — no reliable event signals when JS-rendered content is ready
         let videoLinks = [];
         for (let i = 0; i < 5; i++) {
-            videoLinks = findAllVideoUrlsInDoc(document, searchTerm, window.location.href);
+            videoLinks = findVideoUrlsForAVID(document, searchTerm, window.location.href);
             if (videoLinks.length > 0) break;
             await new Promise((resolve) => setTimeout(resolve, 500));
         }
@@ -1835,6 +1836,11 @@ async function addImprovements() {
         log(`[prefetch] ${className}: checking ${links.length} link(s)`);
 
         links.forEach((link) => {
+            if (link.dataset.bgFetch === "false") {
+                link.classList.add("prefetch-unavailable");
+                addTooltipToLink(link, "Unverifiable");
+                return;
+            }
             if (link.classList.contains("prefetch-found") || link.classList.contains("prefetch-not-found")) {
                 log(`[prefetch] ${link.textContent.trim()}: already checked, skipping`);
                 return;
@@ -1847,9 +1853,9 @@ async function addImprovements() {
                 onload: (response) => {
                     if (isCloudflare(response.responseText)) {
                         log(`[prefetch] ${link.textContent.trim()}: Cloudflare detected`);
-                        if (!link.classList.contains("prefetch-cloudflare")) {
-                            link.classList.add("prefetch-cloudflare");
-                            addTooltipToLink(link, "CF block (visit manually)");
+                        if (!link.classList.contains("prefetch-unavailable")) {
+                            link.classList.add("prefetch-unavailable");
+                            addTooltipToLink(link, "Blocked");
                         }
                         return;
                     }
@@ -1868,7 +1874,7 @@ async function addImprovements() {
                         addTooltipToLink(link, "Empty response");
                         return;
                     }
-                    const found = findAllVideoUrlsInDoc(doc, avid, link.href).length > 0;
+                    const found = findVideoUrlsForAVID(doc, avid, link.href).length > 0;
                     log(`[prefetch] ${link.textContent.trim()}: ${found ? "found" : "not found"}`);
                     link.classList.add(found ? "prefetch-found" : "prefetch-not-found");
                     if (!found && !GM_getValue("prefetchShowNotFound", configurationOptions.prefetchShowNotFound.default)) {
@@ -1927,7 +1933,7 @@ async function addImprovements() {
         const parser = new DOMParser();
         const searchDoc = parser.parseFromString(resp.responseText, "text/html");
 
-        const videoUrls = findAllVideoUrlsInDoc(searchDoc, avid, searchUrl);
+        const videoUrls = findVideoUrlsForAVID(searchDoc, avid, searchUrl);
         if (videoUrls.length === 0) {
             log(`[RG-BG] ${site}: no video pages found for ${avid}`);
             return [];
@@ -2172,7 +2178,7 @@ async function addImprovements() {
             addGroupActionButton(actionTd, "Search All", "Stream-Group", () => prefetchGroupResults("Stream-Group"));
             addSearchLinkAndOpenAllButton("HORNYJAV", "https://hornyjav.com/?s=" + avid, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("TwoJAV", "https://www.twojav.com/en/search?q=" + avid, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("JAV Most", "https://www.javmost.ws/search/BIBIVR-152/" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAV Most", "https://www.javmost.ws/search/" + avid, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("SEXTB", "https://sextb.net/search/" + avid, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("Jable", "https://jable.tv/search/" + avid + "/", "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("BIGO JAV", "https://bigojav.com/?s=" + avid, "Stream-Group", linksTd);
@@ -2183,13 +2189,13 @@ async function addImprovements() {
                 linksTd,
             );
             addSearchLinkAndOpenAllButton("BestJavPorn", "https://www.bestjavporn.com/search/" + avid, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("18AV", "https://18av.mm-cg.com/en/fc_search/all/" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("18AV", "https://18av.mm-cg.com/en/fc_search/all/" + avid + "/1.html", "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("JAVMENU", "https://javmenu.com/en/search?wd=" + avid, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("Supjav", "https://supjav.com/?s=" + avid, "Stream-Group", linksTd);
-            // https://evojav.pro/?s=test
-            // https://www.av01.media/en/search?q=test
-            // https://ggjav.com/en/main/search?string=test
-            // https://123av.com/en/search?keyword=test
+            addSearchLinkAndOpenAllButton("JAV Guru", "https://jav.guru/?s=" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("AV01", "https://www.av01.media/en/search?q=" + avid, "Stream-Group", linksTd, false);
+            addSearchLinkAndOpenAllButton("GGJAV", "https://ggjav.com/en/main/search?string=" + avid, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("123AV", "https://123av.com/en/search?keyword=" + avid, "Stream-Group", linksTd);
 
             if (GM_getValue("prefetchOnLoadStream", configurationOptions.prefetchOnLoad.prefetchOnLoadStream.default))
                 prefetchGroupResults("Stream-Group");
@@ -3531,7 +3537,12 @@ function configurationMenu() {
         } else if (key === "searchGroups") {
             content.appendChild(createButtonsSection("Show Search Groups", Object.entries(option), "", option));
         } else if (key === "prefetchOnLoad") {
-            content.appendChild(createButtonsSection("Auto-prefetch on page load", Object.entries(option), "", option));
+            const prefetchSection = createButtonsSection("Auto-prefetch on page load", Object.entries(option), "", option);
+            const prefetchNote = document.createElement("p");
+            prefetchNote.style.cssText = "margin:4px 0 0;font-size:0.8em;opacity:0.7;";
+            prefetchNote.textContent = "⚠ Use with caution: May trigger rate limits, e.g. when opening many tabs at once.";
+            prefetchSection.appendChild(prefetchNote);
+            content.appendChild(prefetchSection);
         } else if (key === "castButtons") {
             const section = createButtonsSection("Show Cast Image Searches", Object.entries(option), "castButton", option);
             content.appendChild(section);
@@ -3587,6 +3598,7 @@ function configurationMenu() {
 
     // ============ MOUNT & EVENTS ============
     document.body.append(overlay, modal);
+    document.body.style.overflow = "hidden";
     const closeConfig = () => {
         overlay.style.opacity = "0";
         modal.classList.add("hide");
@@ -3594,6 +3606,7 @@ function configurationMenu() {
         setTimeout(() => {
             document.body.removeChild(overlay);
             document.body.removeChild(modal);
+            document.body.style.overflow = "";
         }, 300);
     };
     const onKeyDown = (e) => {
@@ -3696,6 +3709,7 @@ function showNewsNotification() {
         setTimeout(() => {
             overlay?.remove();
             modal?.remove();
+            document.body.style.overflow = "";
         }, 250);
     };
     const closeAll = async () => {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
-// @description    Many improvements: copy GDrive/Rapidgator links to clipboard for download managers (via button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image search, facial recognition, save/show favorite actresses, rating colorization, cover download with actress names, full-size promo images, Cloudflare auto-reload, direct external links (no redirect warnings), Blu-ray filter, color themes (Purple/Pink, Dark Blue), layout improvements. Config via hotkey C, gear icon, or Tampermonkey menu.
-// @version        20260509.1
+// @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external links redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
+// @version        20260509.2
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*

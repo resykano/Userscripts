@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external links redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260509.2
+// @version        20260509.3
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -491,11 +491,12 @@ function findVideoUrlsForAVID(doc, avid, baseUrl) {
         const urlPath = new URL(resolved).pathname.toLowerCase();
 
         // match by href (AVID in URL path, not just query string), title attribute, or anchor text content — but never search/listing pages
+        const isSearchPage = /\/[^/]*search[^/]*(\/|$)/.test(urlPath);
         const titleMatch = (a.getAttribute("title") || "").toLowerCase().includes(lower);
         const textMatch = a.textContent.toLowerCase().includes(lower);
-        const hrefMatch = urlPath.includes(lower) && !/\/search(\/|$)/.test(urlPath);
+        const hrefMatch = urlPath.includes(lower) && !isSearchPage;
 
-        if ((hrefMatch || titleMatch || textMatch) && !seen.has(normalized)) {
+        if ((hrefMatch || titleMatch || textMatch) && !isSearchPage && !seen.has(normalized)) {
             const matchType = hrefMatch ? "href" : titleMatch ? "title" : "text";
             log(`[findVideoUrlsForAVID] match (${matchType}): ${resolved}`);
             seen.add(normalized);

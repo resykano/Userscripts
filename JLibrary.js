@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external links redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260509.5
+// @version        20260510
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -2190,22 +2190,22 @@ async function addImprovements() {
         if (GM_getValue("searchGroupStream", configurationOptions.searchGroups.searchGroupStream.default)) {
             const { actionTd, linksTd } = addGroupRow("Stream:", "Stream-Group");
             addGroupActionButton(actionTd, "Search All", "Stream-Group", () => prefetchGroupResults("Stream-Group"));
-            addSearchLinkAndOpenAllButton("HORNYJAV", `https://hornyjav.com/?s=${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("TwoJAV", `https://www.twojav.com/en/search?q=${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("JAV Most", `https://www.javmost.ws/search/${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("SEXTB", `https://sextb.net/search/${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("Jable", `https://jable.tv/search/${avid}/`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("BIGO JAV", `https://bigojav.com/?s=${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("HighPorn", `https://highporn.net/search/videos?search_query=${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("BestJavPorn", `https://www.bestjavporn.com/search/${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("18AV", `https://18av.mm-cg.com/en/fc_search/all/${avid}/1.html`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("JAVMENU", `https://javmenu.com/en/search?wd=${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("Supjav", `https://supjav.com/?s=${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("JAV Guru", `https://jav.guru/?s=${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("AV01", `https://www.av01.media/en/search?q=${avid}`, "Stream-Group", linksTd, false);
-            addSearchLinkAndOpenAllButton("GGJAV", `https://ggjav.com/en/main/search?string=${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("123AV", `https://123av.com/en/search?keyword=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("18AV", `https://18av.mm-cg.com/en/fc_search/all/${avid}/1.html`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("AV01", `https://www.av01.media/en/search?q=${avid}`, "Stream-Group", linksTd, false);
+            addSearchLinkAndOpenAllButton("BestJavPorn", `https://www.bestjavporn.com/search/${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("BIGO JAV", `https://bigojav.com/?s=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("GGJAV", `https://ggjav.com/en/main/search?string=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("HighPorn", `https://highporn.net/search/videos?search_query=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("HORNYJAV", `https://hornyjav.com/?s=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("Jable", `https://jable.tv/search/${avid}/`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAV Guru", `https://jav.guru/?s=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAV Most", `https://www.javmost.ws/search/${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("JAVClick", `https://javclick.com/en/search?by=Title&keyword=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("JAVMENU", `https://javmenu.com/en/search?wd=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("SEXTB", `https://sextb.net/search/${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("Supjav", `https://supjav.com/?s=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("TwoJAV", `https://www.twojav.com/en/search?q=${avid}`, "Stream-Group", linksTd);
 
             if (GM_getValue("prefetchOnLoadStream", configurationOptions.prefetchOnLoad.prefetchOnLoadStream.default))
                 prefetchGroupResults("Stream-Group");

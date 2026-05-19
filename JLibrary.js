@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
-// @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external links redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260510
+// @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
+// @version        20260519
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -770,8 +770,8 @@ function addImprovementsCss() {
             border-color: #dde3ee;
         }
         /* prefetch result indicators */
-        .prefetch-found { color: #4ade80 !important; }
-        .prefetch-found:hover { color: white !important; background: #4ade80 !important; border-color: #4ade80 !important; }
+        .prefetch-found { color: #23ce00 !important; }
+        .prefetch-found:hover { color: white !important; background: #23ce00 !important; border-color: #23ce00 !important; }
 
         .prefetch-not-found { color: #de4a4a !important; }
         .prefetch-not-found:hover { color: white !important; background: #de4a4a !important; border-color: #de4a4a !important; }
@@ -1262,10 +1262,10 @@ async function addImprovements() {
                 }
 
                 // add title textbox
-                await addTitleCopyPerClick();
+                addTitleCopyPerClick();
 
                 // adds posibility for local search but disabled by default as needs addinal scripts
-                await addLocalSearchButton();
+                addLocalSearchButton();
 
                 // add search links
                 setSearchLinks();
@@ -1304,7 +1304,7 @@ async function addImprovements() {
                 addConfigIcon();
 
                 // remove redirects for external links
-                setTimeout(removeRedirects, 500);
+                setTimeout(removeRedirects, 1000);
 
                 // TODO: needs a more solid solution than just a blind timeout
                 // maybe possible with GM_openInTab
@@ -1662,7 +1662,7 @@ async function addImprovements() {
     async function addTitleCopyPerClick() {
         let titleElement = await getTitleElement();
 
-        const clipboardSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M2.75,4.5 C2.75,3.535 3.535,2.75 4.5,2.75 L8,2.75 L8,1 C8,0.448 7.553,0 7,0 L1,0 C0.447,0 0,0.448 0,1 L0,7 C0,7.552 0.447,8 1,8 L2.75,8 L2.75,4.5 Z"></path><path d="M11,4 L5,4 C4.447,4 4,4.448 4,5 L4,11 C4,11.552 4.447,12 5,12 L11,12 C11.553,12 12,11.552 12,11 L12,5 C12,4.448 11.553,4 11,4"></path></svg>`;
+        const clipboardSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 12 12" fill="currentColor"><path d="M2.75,4.5 C2.75,3.535 3.535,2.75 4.5,2.75 L8,2.75 L8,1 C8,0.448 7.553,0 7,0 L1,0 C0.447,0 0,0.448 0,1 L0,7 C0,7.552 0.447,8 1,8 L2.75,8 L2.75,4.5 Z"></path><path d="M11,4 L5,4 C4.447,4 4,4.448 4,5 L4,11 C4,11.552 4.447,12 5,12 L11,12 C11.553,12 12,11.552 12,11 L12,5 C12,4.448 11.553,4 11,4"></path></svg>`;
         const checkSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
 
         GM_addStyle(`

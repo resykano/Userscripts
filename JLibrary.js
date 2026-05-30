@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260530
+// @version        20260531
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -67,35 +67,16 @@
 // bind preserves call site in browser console (wrapper functions would point here instead)
 const log = GM_getValue("authorsMode", false) ? console.log.bind(console) : () => {};
 
-const NEWS_VERSION = "20260503";
+const NEWS_VERSION = "20260530";
 const newsEntries = [
     {
         version: NEWS_VERSION,
         changes: [
-            "Major update: Over 90% of the code was rewritten or restructured, bringing significant improvements in performance, maintainability and features.",
-            "Redesigned layout: more compact, cleaner and more pleasing.",
-            "Color themes in config: Purple/Pink and Dark Blue.",
-            {
-                text: "Added two new facial recognition sites to help find actors.",
-                detail: "The original site is still there but has been broken for a while. The second site works best now — its page may look broken, but it functions correctly. The third is just an extra option.",
-            },
-            {
-                text: "Configuration menu: open via Tampermonkey → 'Configuration', press C, or use the config button (bottom right) on the details page.",
-            },
-            {
-                text: '"Search all" for Streams, Thumbnails 2 and GDrive now checks sites in the background instead of opening tabs.',
-                detail: "Links are color-coded: green = found, red = not found, orange = timeout/error, gray = Cloudflare (visit manually). Links remain clickable regardless of result.",
-            },
-            {
-                text: "Background requests (thumbnail search, prefetch) now run in parallel > results appear faster.",
-                detail: "Tampermonkey serialized background requests in recent Chrome MV3 versions. A fix from the Tampermonkey team is now included. Requires Tampermonkey 5.3.2 or newer.",
-            },
-            "Improved inline thumbnails: added 3xPlanet and removed it from Thumbnails 2 group.",
-            "Tabs opened by the script no longer steal focus for Rapidgator.",
-            "Removed inaccessible image sources (KawaiiThong, BeautiMetas).",
+            "Comment links are now collected via fetch in the background, no page navigation required. Falls back to the previous method if Cloudflare blocks the request.",
+            "Comment links now collect Rapidgator links only by default. Enable \"Copy all links from comments\" in config to restore the previous behavior.",
         ],
         feedback: {
-            text: "Found a bug, have a suggestion, or know a link that should be included/removed? Let me know at",
+            text: "Found a bug, have a suggestion, or know a link that should be included/removed? Let me know at:",
             url: "https://greasyfork.org/en/scripts/502894-javlibrary-improvements/feedback",
         },
     },
@@ -207,6 +188,11 @@ const configurationOptions = {
         default: false,
         category: "improvements",
     },
+    allLinksFromComments: {
+        label: "Copy all links from comments (e.g. k2s.cc), not just Rapidgator",
+        default: false,
+        category: "improvements",
+    },
     videoThumbnails: {
         label: "Display video preview/thumbnail images",
         default: true,
@@ -217,7 +203,7 @@ const configurationOptions = {
     },
     externalSearchModeTimeout: {
         label: "Allowed execution time of Collect Rapidgator Link & Thumbnails Search (Milliseconds)",
-        default: 9000,
+        default: 10000,
         category: "improvements",
     },
     externalDataFetchTimeout: {
@@ -2315,40 +2301,118 @@ async function addImprovements() {
         // press Open Rapidgator Group button
         document.querySelector("#video_search .search-group-actions.Rapidgator-Group button")?.click();
 
-        // go to comments page, if not already there
         const allCommentsLink = document.querySelector("#video_comments_all > a");
         if (allCommentsLink) {
-            // open link
-            await GM_setValue("executingCollectingComments", true);
-            window.open(allCommentsLink.href, "_self");
+            const result = await collectCommentLinksByFetch(allCommentsLink.href);
+            if (result !== null) {
+                log("[collect] fetch:", result.split("\n").filter(Boolean).length, "link(s) copied");
+                GM_setClipboard(result);
+            } else {
+                // Cloudflare blocked fetch — fall back to navigation-based collection
+                await GM_setValue("executingCollectingComments", true);
+                window.open(allCommentsLink.href, "_self");
+            }
         } else if (document.querySelector("#rightcolumn > div.page_selector > a.page.last")) {
-            // if already on comments page
-            await GM_setValue("executingCollectingComments", true);
-            location.reload();
+            // already on comments page
+            const result = await collectCommentLinksByFetch(window.location.href);
+            if (result !== null) {
+                GM_setClipboard(result);
+            } else {
+                await GM_setValue("executingCollectingComments", true);
+                location.reload();
+            }
         } else {
             copyLinksFromCommentsToClipboard();
         }
     }
 
+    function extractCommentLinks(doc, checkVisibility = false) {
+        const commentsElement = doc.querySelector("#video_comments");
+        if (!commentsElement) return "";
+
+        const skipLink = /(\.gif|\.jpg|\.jpeg|user\.php|userposts\.php|ouo\.io|twitter\.com|x\.com|rg\.to(\/|%2F)folder)/i;
+        const allLinks = GM_getValue("allLinksFromComments", configurationOptions.allLinksFromComments.default);
+        const isRapidgator = (url) => /(rapidgator\.net|rg\.to)/i.test(url);
+
+        if (checkVisibility) {
+            // Live page: JS has rendered BBCode into <a> tags; respect CSS visibility for hoster filtering
+            return Array.from(commentsElement.querySelectorAll("a"))
+                .filter((link) => !!link.offsetParent && !skipLink.test(link.href))
+                .filter((link) => allLinks || isRapidgator(link.href))
+                .map((link) => link.href)
+                .join("\n");
+        }
+
+        // Fetched page: parse [url=...] BBCode from hidden textareas (JS hasn't run)
+        return Array.from(commentsElement.querySelectorAll("textarea.hidden"))
+            .flatMap((textarea) => [...textarea.textContent.matchAll(/\[url=([^\]]+)\]/gi)].map((m) => m[1]))
+            .filter((url) => !skipLink.test(url) && (allLinks || isRapidgator(url)))
+            .join("\n");
+    }
+
     // Function to copy the contents of the #video_comments element to the clipboard
     // for collecting download links in apps like JDownloader
     function copyLinksFromCommentsToClipboard() {
-        const commentsElement = document.querySelector("#video_comments");
-        if (commentsElement) {
-            const links = commentsElement.querySelectorAll("a");
+        const content = extractCommentLinks(document, true);
+        if (content) GM_setClipboard(content);
+    }
 
-            // collect href attributes of links in an array
-            const commentsContent = Array.from(links)
-                // allows to disable the collection of links from a hoster by using display: none
-                // The !! converts link.offsetParent to a boolean value
-                .filter((link) => !!link.offsetParent)
-                // filter not usable
-                .filter((link) => !link.href.match(/(\.gif|\.jpg|\.jpeg|user\.php|userposts\.php|ouo\.io)/i))
-                .map((link) => link.href)
-                .join("\n");
-
-            GM_setClipboard(commentsContent);
+    async function fetchPageHtml(url) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        try {
+            const response = await window.fetch(url, {
+                credentials: "include",
+                signal: controller.signal,
+            });
+            if (response.status === 403 || response.status === 503) {
+                log("[fetchPageHtml] blocked, status:", response.status);
+                return null;
+            }
+            const text = await response.text();
+            const doc = new DOMParser().parseFromString(text, "text/html");
+            // inject base URL so relative hrefs resolve correctly in the non-rendered document
+            const base = doc.createElement("base");
+            base.href = url;
+            doc.head.prepend(base);
+            const title = doc.title || "";
+            if (
+                title.includes("Just a moment") ||
+                title.includes("Checking your browser") ||
+                text.includes("cf-browser-verification")
+            ) {
+                log("[fetchPageHtml] Cloudflare challenge, title:", title);
+                return null;
+            }
+            return doc;
+        } catch (e) {
+            log("[fetchPageHtml] error:", e.name, e.message);
+            return null;
+        } finally {
+            clearTimeout(timeoutId);
         }
+    }
+
+    async function collectCommentLinksByFetch(firstPageUrl) {
+        const firstDoc = await fetchPageHtml(firstPageUrl);
+        if (!firstDoc) return null;
+
+        const lastPageUrl = firstDoc.querySelector("#rightcolumn > div.page_selector > a.page.last")?.href;
+        const lastPage = lastPageUrl ? parseInt(new URL(lastPageUrl).searchParams.get("page")) : 1;
+
+        const restDocs = await Promise.all(
+            Array.from({ length: lastPage - 1 }, (_, i) => {
+                const url = new URL(firstPageUrl);
+                url.searchParams.set("page", i + 2);
+                return fetchPageHtml(url.href);
+            }),
+        );
+        if (restDocs.some((d) => d === null)) return null;
+
+        return [firstDoc, ...restDocs]
+            .map((doc) => extractCommentLinks(doc))
+            .filter(Boolean)
+            .join("\n");
     }
 
     function addCastImagesSearchButtons() {
@@ -3134,6 +3198,60 @@ function addSharedModalStyles() {
 }
 
 // =======================================================================================
+// Shared Modal Builder
+// =======================================================================================
+
+function buildModal({ id, title } = {}) {
+    addSharedModalStyles();
+
+    const overlay = document.createElement("div");
+    if (id) overlay.id = `${id}-overlay`;
+    overlay.className = "modal-overlay";
+    overlay.style.opacity = "0";
+    requestAnimationFrame(() => requestAnimationFrame(() => { overlay.style.opacity = "1"; }));
+
+    const modal = document.createElement("div");
+    if (id) modal.id = id;
+    modal.className = "modal";
+
+    const header = document.createElement("div");
+    header.className = "modal-header";
+    const titleEl = document.createElement("h3");
+    titleEl.className = "modal-title";
+    titleEl.innerHTML = title ?? "";
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "modal-close";
+    closeBtn.textContent = "✕";
+    header.append(titleEl, closeBtn);
+    modal.appendChild(header);
+
+    let onKeyDown;
+    const close = () => {
+        overlay.style.opacity = "0";
+        modal.classList.add("hide");
+        document.removeEventListener("keydown", onKeyDown, true);
+        setTimeout(() => {
+            overlay.remove();
+            modal.remove();
+            document.body.style.overflow = "";
+        }, 250);
+    };
+    onKeyDown = (e) => { if (e.key === "Escape") close(); };
+
+    overlay.addEventListener("click", close);
+    closeBtn.addEventListener("click", close);
+
+    const mount = () => {
+        document.addEventListener("keydown", onKeyDown, true);
+        document.body.append(overlay, modal);
+        document.body.style.overflow = "hidden";
+        requestAnimationFrame(() => modal.classList.add("show"));
+    };
+
+    return { overlay, modal, close, mount };
+}
+
+// =======================================================================================
 // Configuration Menu
 // =======================================================================================
 
@@ -3293,41 +3411,6 @@ function configurationMenu() {
             .modal-footer button:last-child:hover { background: var(--btn-bg-hover, #d0526a); }
             .modal-footer button:active { transform: translateY(1px); }
         `);
-    };
-
-    // ============ DOM CREATION ============
-    const createOverlay = () => {
-        const overlay = document.createElement("div");
-        overlay.className = "modal-overlay";
-        overlay.style.opacity = "0";
-        requestAnimationFrame(() =>
-            requestAnimationFrame(() => {
-                overlay.style.opacity = "1";
-            }),
-        );
-        return overlay;
-    };
-
-    const createModal = () => {
-        const modal = document.createElement("div");
-        modal.className = "modal";
-        requestAnimationFrame(() => {
-            modal.classList.add("show");
-        });
-        return modal;
-    };
-
-    const createHeader = () => {
-        const header = document.createElement("div");
-        header.className = "modal-header";
-        const title = document.createElement("h3");
-        title.innerText = "Configuration Settings";
-        title.className = "modal-title";
-        const closeBtn = document.createElement("button");
-        closeBtn.className = "modal-close";
-        closeBtn.textContent = "✕";
-        header.append(title, closeBtn);
-        return { header, closeBtn };
     };
 
     // ============ ELEMENT BUILDERS ============
@@ -3503,11 +3586,7 @@ function configurationMenu() {
 
     // ============ INITIALIZATION ============
     addStyles();
-
-    const overlay = createOverlay();
-    const modal = createModal();
-    const { header, closeBtn } = createHeader();
-    modal.appendChild(header);
+    const { overlay, modal, mount } = buildModal({ title: "Configuration Settings" });
 
     const content = document.createElement("div");
     content.className = "modal-content";
@@ -3548,7 +3627,7 @@ function configurationMenu() {
             const prefetchSection = createButtonsSection("Auto-prefetch on page load", Object.entries(option), "", option);
             const prefetchNote = document.createElement("p");
             prefetchNote.style.cssText = "margin:4px 0 0;font-size:0.8em;opacity:0.7;";
-            prefetchNote.textContent = "⚠ Use with caution: May trigger rate limits, e.g. when opening many tabs at once.";
+            prefetchNote.textContent = "⚠ Use with caution: May trigger rate limits, e.g. when opening many video pages at once.";
             prefetchSection.appendChild(prefetchNote);
             content.appendChild(prefetchSection);
         } else if (key === "castButtons") {
@@ -3604,25 +3683,7 @@ function configurationMenu() {
     buttonsContainer.append(resetButton, applyButton);
     modal.appendChild(buttonsContainer);
 
-    // ============ MOUNT & EVENTS ============
-    document.body.append(overlay, modal);
-    document.body.style.overflow = "hidden";
-    const closeConfig = () => {
-        overlay.style.opacity = "0";
-        modal.classList.add("hide");
-        document.removeEventListener("keydown", onKeyDown, true);
-        setTimeout(() => {
-            overlay.remove();
-            modal.remove();
-            document.body.style.overflow = "";
-        }, 300);
-    };
-    const onKeyDown = (e) => {
-        if (e.key === "Escape") closeConfig();
-    };
-    overlay.addEventListener("click", closeConfig);
-    closeBtn.addEventListener("click", closeConfig);
-    document.addEventListener("keydown", onKeyDown, true);
+    mount();
 }
 
 // =======================================================================================
@@ -3633,7 +3694,6 @@ function showNewsNotification() {
     const lastSeenNewsVersion = GM_getValue("lastSeenNewsVersion", null);
     if (lastSeenNewsVersion === NEWS_VERSION) return;
 
-    addSharedModalStyles();
     GM_addStyle(`
         #news-bell {
             position: fixed;
@@ -3660,12 +3720,12 @@ function showNewsNotification() {
             border: 2px solid white;
             pointer-events: none;
         }
-        #news-modal { width: 700px; max-height: 80vh; }
+        #news-modal { width: 565px; max-height: 80vh; }
         .news-body {
             padding: 14px 16px;
             overflow-y: auto;
             flex: 1;
-            font-size: 13.5px;
+            font-size: 15px;
             color: #374151;
         }
         .news-body::-webkit-scrollbar { width: 4px; }
@@ -3673,14 +3733,14 @@ function showNewsNotification() {
         .news-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
         .news-body::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
         .news-entry + .news-entry { margin-top: 16px; border-top: 1px solid rgba(0,0,0,0.07); padding-top: 16px; }
-        .news-date { font-size: 11px; color: #9ca3af; margin-bottom: 10px; letter-spacing: 0.3px; }
-        .news-section-label { font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--accent, #667eea); margin: 12px 0 6px; }
+        .news-date { font-size: 13px; color: #9ca3af; margin-bottom: 10px; letter-spacing: 0.3px; }
+        .news-section-label { font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--accent, #667eea); margin: 12px 0 6px; }
         .news-list { margin: 0; padding-left: 16px; }
         .news-list li { margin-bottom: 6px; color: #374151; }
-        .news-item-detail { display: none; font-size: 12px; color: #6b7280; margin-top: 3px; line-height: 1.45; }
+        .news-item-detail { display: none; font-size: 14px; color: #6b7280; margin-top: 3px; line-height: 1.45; }
         .news-item-detail.expanded { display: block; }
-        .news-toggle { cursor: pointer; font-size: 11.5px; color: var(--accent, #667eea); user-select: none; margin-left: 4px; }
-        .news-feedback { margin-top: 12px; padding: 9px 12px; background: color-mix(in srgb, var(--accent, #667eea) 7%, transparent); border-left: 3px solid var(--accent, #667eea); border-radius: 3px; font-size: 13px; color: #4a5568; }
+        .news-toggle { cursor: pointer; font-size: 13.5px; color: var(--accent, #667eea); user-select: none; margin-left: 4px; }
+        .news-feedback { margin-top: 12px; padding: 9px 12px; background: color-mix(in srgb, var(--accent, #667eea) 7%, transparent); border-left: 3px solid var(--accent, #667eea); border-radius: 3px; font-size: 15px; color: #4a5568; }
         #news-modal .modal-footer button {
             padding: 7px 24px;
             background: var(--btn-bg, #e8687a);
@@ -3688,7 +3748,7 @@ function showNewsNotification() {
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 15px;
             font-weight: 500;
             transition: background 0.15s ease;
         }
@@ -3705,54 +3765,17 @@ function showNewsNotification() {
         <span class="news-badge"></span>
     `;
 
-    let onNewsKeyDown = null;
-
-    const dismissModal = () => {
-        const overlay = document.getElementById("news-overlay");
-        const modal = document.getElementById("news-modal");
-        if (!modal) return;
-        if (overlay) overlay.style.opacity = "0";
-        modal.classList.add("hide");
-        if (onNewsKeyDown) document.removeEventListener("keydown", onNewsKeyDown, true);
-        setTimeout(() => {
-            overlay?.remove();
-            modal?.remove();
-            document.body.style.overflow = "";
-        }, 250);
-    };
-    const closeAll = async () => {
-        await GM_setValue("lastSeenNewsVersion", NEWS_VERSION);
-        bell.remove();
-        dismissModal();
-    };
-
     const openModal = () => {
         if (document.getElementById("news-modal")) return;
-        onNewsKeyDown = (e) => {
-            if (e.key === "Escape") dismissModal();
+        const { modal, close: dismissModal, mount } = buildModal({
+            id: "news-modal",
+            title: `What's New<br><span style="font-size:13px;font-weight:400;opacity:0.8;">JAVLibrary Improvements UserScript</span>`,
+        });
+        const closeAll = async () => {
+            await GM_setValue("lastSeenNewsVersion", NEWS_VERSION);
+            bell.remove();
+            dismissModal();
         };
-        document.addEventListener("keydown", onNewsKeyDown, true);
-
-        const overlay = document.createElement("div");
-        overlay.id = "news-overlay";
-        overlay.className = "modal-overlay";
-        overlay.addEventListener("click", dismissModal);
-
-        const modal = document.createElement("div");
-        modal.id = "news-modal";
-        modal.className = "modal";
-        setTimeout(() => modal.classList.add("show"), 50);
-
-        const header = document.createElement("div");
-        header.className = "modal-header";
-        const title = document.createElement("h3");
-        title.className = "modal-title";
-        title.innerHTML = `What's New<br><span style="font-size:13px;font-weight:400;opacity:0.8;">JAVLibrary Improvements UserScript</span>`;
-        const closeBtn = document.createElement("button");
-        closeBtn.className = "modal-close";
-        closeBtn.textContent = "✕";
-        closeBtn.addEventListener("click", dismissModal);
-        header.append(title, closeBtn);
 
         const body = document.createElement("div");
         body.className = "news-body";
@@ -3801,7 +3824,8 @@ function showNewsNotification() {
             if (feedback) {
                 const fb = document.createElement("div");
                 fb.className = "news-feedback";
-                fb.append(feedback.text + " ");
+                fb.append(feedback.text);
+                fb.appendChild(document.createElement("br"));
                 const a = document.createElement("a");
                 a.href = feedback.url;
                 a.textContent = feedback.url;
@@ -3821,8 +3845,8 @@ function showNewsNotification() {
         okBtn.addEventListener("click", closeAll);
         footer.appendChild(okBtn);
 
-        modal.append(header, body, footer);
-        document.body.append(overlay, modal);
+        modal.append(body, footer);
+        mount();
     };
 
     bell.addEventListener("click", openModal);

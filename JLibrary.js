@@ -5,8 +5,8 @@
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
-// @match          *://x75p.com/*
-// @match          *://*.y78k.com/*
+// @match          *://*.c99i.com/*
+// @match          *://c99i.com/*
 // @match          *://javx357.com/*
 // @match          *://arcjav.com/*
 // @match          *://javgg.me/*
@@ -2493,6 +2493,7 @@ async function addImprovements() {
         addButton("Cast by Face", "https://xslist.org/en/searchByImage");
         addButton("Cast by Face 2", "https://www.av-search.online/");
         addButton("Cast by Face 3", "https://ggjav.com/ja/main/recognize_pornstar");
+        addButton("Cast by Face 4", "https://face.okonomi-search.com");
         addButton("Cast by Scene", `https://avwikidb.com/en/work/${avid}`);
     }
 
@@ -2674,7 +2675,16 @@ async function addImprovements() {
                                 infoBox.style.display = "none";
                                 clearInterval(countdownInterval);
                                 countdownInterval = null;
-                                const submitButton = document.querySelector("#ui-accordion-accordion-panel-1 > div.center > input");
+                                const simplePanel = document.querySelector("#ui-accordion-accordion-panel-0");
+                                const isSimpleSearch = simplePanel?.style.display !== "none";
+                                let submitButton;
+                                if (isSimpleSearch) {
+                                    const inputs = simplePanel.querySelectorAll("input[type='text'][name='data']");
+                                    const activeInput = Array.from(inputs).find(input => input.value.trim() !== "");
+                                    submitButton = activeInput?.closest("form")?.querySelector("input[type='button']");
+                                } else {
+                                    submitButton = document.querySelector("#ui-accordion-accordion-panel-1 > div.center > input");
+                                }
                                 if (submitButton) {
                                     submitButton.click();
                                 }

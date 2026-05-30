@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260519
+// @version        20260530
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -68,7 +68,6 @@
 const log = GM_getValue("authorsMode", false) ? console.log.bind(console) : () => {};
 
 const NEWS_VERSION = "20260503";
-
 const newsEntries = [
     {
         version: NEWS_VERSION,
@@ -218,7 +217,7 @@ const configurationOptions = {
     },
     externalSearchModeTimeout: {
         label: "Allowed execution time of Collect Rapidgator Link & Thumbnails Search (Milliseconds)",
-        default: 8000,
+        default: 9000,
         category: "improvements",
     },
     externalDataFetchTimeout: {
@@ -512,6 +511,15 @@ function findVideoUrlsForAVID(doc, avid, baseUrl) {
 // it reads all keys, copies the combined content, and cleans up.
 // All other tabs just close without copying.
 function coordinateTabs(content) {
+    // Remove stale keys older than 30 s (left by crashed/closed lead tabs)
+    const now = Date.now();
+    Object.keys(localStorage)
+        .filter((k) => k.startsWith("rgLinks_"))
+        .forEach((k) => {
+            const ts = parseInt(k.slice("rgLinks_".length));
+            if (!isNaN(ts) && now - ts > 30000) localStorage.removeItem(k);
+        });
+
     const myTabKey = "rgLinks_" + Date.now() + Math.random();
     localStorage.setItem(myTabKey, content);
     setTimeout(() => {
@@ -1307,12 +1315,34 @@ async function addImprovements() {
                 setTimeout(removeRedirects, 1000);
 
                 // TODO: needs a more solid solution than just a blind timeout
-                // maybe possible with GM_openInTab
+                //
+                // Attempted: visibilitychange / window focus event
+                //   Doesn't work — tabs run in the background and the user never switches to them.
+                //
+                // Attempted: GM_openInTab onclose
+                //   The onclose handler lives on the *opening* side, not in the opened tab.
+                //   Sub-tabs opened by level-1 tabs can't be tracked from the originating page.
+                //
+                // Attempted: activity-based timeout via localStorage
+                //   localStorage is origin-scoped. Background tabs (rapidgator.net, jav.guru, …)
+                //   write to their own origin's storage — the main page never sees those writes.
+                //
+                // Attempted: activity-based timeout via GM_setValue + setInterval
+                //   GM_setValue is cross-origin, but the activity signal only comes from
+                //   coordinateTabs() which is the *last* step of the chain. The inactivity
+                //   window (e.g. 3 s) would fire before level-1 tabs even finish loading,
+                //   turning off externalSearchMode too early.
+                //   A proper fix would require updating the activity timestamp at every
+                //   chain step (externalSearch(), GM_openInTab calls, …) which is invasive
+                //   and still race-prone. The blind timeout is the pragmatic fallback.
                 const timeout = GM_getValue("externalSearchModeTimeout", configurationOptions.externalSearchModeTimeout.default);
                 if (GM_getValue("externalSearchMode", false)) {
+                    const mySession = GM_getValue("externalSearchModeSession", 0);
                     setTimeout(() => {
-                        GM_setValue("externalSearchMode", false);
-                        log("[ext-search] externalSearchMode off");
+                        if (GM_getValue("externalSearchModeSession", 0) === mySession) {
+                            GM_setValue("externalSearchMode", false);
+                            log("[ext-search] externalSearchMode off (fallback)");
+                        }
                     }, timeout);
                 }
 
@@ -1829,7 +1859,6 @@ async function addImprovements() {
                         currentTry++;
                         if (currentTry < maxRetries) {
                             log(`[cover] Download attempt ${currentTry} failed. Retrying...`);
-                            // Optional: Add delay between retries
                             await new Promise((resolve) => setTimeout(resolve, 1000));
                         } else {
                             console.error("Max retries reached. Image download failed.");
@@ -1980,11 +2009,15 @@ async function addImprovements() {
     }
 
     function setExternalSearchMode() {
+        const sessionId = Date.now();
         GM_setValue("externalSearchMode", true);
+        GM_setValue("externalSearchModeSession", sessionId);
         const duration = GM_getValue("externalSearchModeTimeout", configurationOptions.externalSearchModeTimeout.default) + 2000;
         setTimeout(() => {
-            GM_setValue("externalSearchMode", false);
-            log("[ext-search] externalSearchMode off");
+            if (GM_getValue("externalSearchModeSession", 0) === sessionId) {
+                GM_setValue("externalSearchMode", false);
+                log("[ext-search] externalSearchMode off");
+            }
         }, duration);
     }
 
@@ -2196,12 +2229,22 @@ async function addImprovements() {
             addSearchLinkAndOpenAllButton("BestJavPorn", `https://www.bestjavporn.com/search/${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("BIGO JAV", `https://bigojav.com/?s=${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("GGJAV", `https://ggjav.com/en/main/search?string=${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("HighPorn", `https://highporn.net/search/videos?search_query=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton(
+                "HighPorn",
+                `https://highporn.net/search/videos?search_query=${avid}`,
+                "Stream-Group",
+                linksTd,
+            );
             addSearchLinkAndOpenAllButton("HORNYJAV", `https://hornyjav.com/?s=${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("Jable", `https://jable.tv/search/${avid}/`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("JAV Guru", `https://jav.guru/?s=${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("JAV Most", `https://www.javmost.ws/search/${avid}`, "Stream-Group", linksTd);
-            addSearchLinkAndOpenAllButton("JAVClick", `https://javclick.com/en/search?by=Title&keyword=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton(
+                "JAVClick",
+                `https://javclick.com/en/search?by=Title&keyword=${avid}`,
+                "Stream-Group",
+                linksTd,
+            );
             addSearchLinkAndOpenAllButton("JAVMENU", `https://javmenu.com/en/search?wd=${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("SEXTB", `https://sextb.net/search/${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("Supjav", `https://supjav.com/?s=${avid}`, "Stream-Group", linksTd);
@@ -2384,7 +2427,7 @@ async function addImprovements() {
         }
 
         addButton("Cast by Face", "https://xslist.org/en/searchByImage");
-        addButton("Cast by Face 2", "https://www.av-search.online/", "Looks defect but works");
+        addButton("Cast by Face 2", "https://www.av-search.online/");
         addButton("Cast by Face 3", "https://ggjav.com/ja/main/recognize_pornstar");
         addButton("Cast by Scene", `https://avwikidb.com/en/work/${avid}`);
     }
@@ -3257,9 +3300,11 @@ function configurationMenu() {
         const overlay = document.createElement("div");
         overlay.className = "modal-overlay";
         overlay.style.opacity = "0";
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            overlay.style.opacity = "1";
-        }));
+        requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+                overlay.style.opacity = "1";
+            }),
+        );
         return overlay;
     };
 

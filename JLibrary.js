@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260531
+// @version        20260531.1
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -73,7 +73,7 @@ const newsEntries = [
         version: NEWS_VERSION,
         changes: [
             "Comment links are now collected via fetch in the background, no page navigation required. Falls back to the previous method if Cloudflare blocks the request.",
-            "Comment links now collect Rapidgator links only by default. Enable \"Copy all links from comments\" in config to restore the previous behavior.",
+            'Comment links now collect Rapidgator links only by default. Enable "Copy all links from comments" in config to restore the previous behavior.',
         ],
         feedback: {
             text: "Found a bug, have a suggestion, or know a link that should be included/removed? Let me know at:",
@@ -1298,7 +1298,7 @@ async function addImprovements() {
                 addConfigIcon();
 
                 // remove redirects for external links
-                setTimeout(removeRedirects, 1000);
+                removeRedirects();
 
                 // TODO: needs a more solid solution than just a blind timeout
                 //
@@ -1366,9 +1366,72 @@ async function addImprovements() {
 
                 window.addEventListener("keydown", function (event) {
                     if (event.key === "<" || event.key === "\\") {
+                        window.scrollTo({ top: 0, behavior: "instant" });
                         collectingLinksFromCommentsAndRgGroup();
                     }
                 });
+                break;
+            }
+            case isJavLibrary && /\/videocomments.php/.test(url): {
+                log("[page] Comments Page");
+
+                function loadNextPage() {
+                    copyLinksFromCommentsToClipboard(); // Copy the comments content before loading the next page
+
+                    let currentPage = new URL(window.location.href).searchParams.get("page");
+                    let lastPageUrl = document.querySelector("#rightcolumn > div.page_selector > a.page.last")?.href;
+                    let lastPage = GM_getValue("lastPage", null);
+
+                    // If lastPage is not set and the last page URL is available, extract and store the last page number
+                    if (!lastPage && lastPageUrl) {
+                        lastPage = new URL(lastPageUrl).searchParams.get("page");
+                        GM_setValue("lastPage", lastPage);
+                    }
+
+                    if (!currentPage) currentPage = 1;
+                    else currentPage = parseInt(currentPage);
+
+                    // If the current page is not the last page, load the next page
+                    if (currentPage < lastPage) {
+                        let nextPage = currentPage + 1;
+                        let nextUrl = new URL(window.location.href);
+                        nextUrl.searchParams.set("page", nextPage);
+                        window.location.href = nextUrl.href;
+                    } else {
+                        // not if cloudflare check happens
+                        if (!document.title.includes("Just a moment...")) {
+                            GM_deleteValue("lastPage");
+                            GM_deleteValue("executingCollectingComments");
+
+                            // go back to main page
+                            const mainPageLink = document.querySelector("#video_jacket > a");
+                            log("[comments]", mainPageLink);
+                            if (mainPageLink) {
+                                // open link
+                                window.open(mainPageLink.href, "_self");
+                            }
+                        }
+                    }
+                }
+
+                // initialize
+                (async function () {
+                    let executingCollectingComments = GM_getValue("executingCollectingComments", false);
+                    if (executingCollectingComments) {
+                        // await new Promise((resolve) => setTimeout(resolve, 100)); // wait before loading the next page to ensure clipboard operation is completed
+                        loadNextPage();
+                    } else {
+                        window.addEventListener("keydown", function (event) {
+                            if (event.key === "<") {
+                                collectingLinksFromCommentsAndRgGroup();
+                            }
+                        });
+
+                        // remove redirects for external links
+                        removeRedirects();
+                    }
+                })();
+
                 break;
             }
             // Redirect Page
@@ -1459,65 +1522,7 @@ async function addImprovements() {
 
                 break;
             }
-            case isJavLibrary && /\/videocomments.php/.test(url): {
-                log("[page] Comments Page");
 
-                function loadNextPage() {
-                    copyLinksFromCommentsToClipboard(); // Copy the comments content before loading the next page
-
-                    let currentPage = new URL(window.location.href).searchParams.get("page");
-                    let lastPageUrl = document.querySelector("#rightcolumn > div.page_selector > a.page.last")?.href;
-                    let lastPage = GM_getValue("lastPage", null);
-
-                    // If lastPage is not set and the last page URL is available, extract and store the last page number
-                    if (!lastPage && lastPageUrl) {
-                        lastPage = new URL(lastPageUrl).searchParams.get("page");
-                        GM_setValue("lastPage", lastPage);
-                    }
-
-                    if (!currentPage) currentPage = 1;
-                    else currentPage = parseInt(currentPage);
-
-                    // If the current page is not the last page, load the next page
-                    if (currentPage < lastPage) {
-                        let nextPage = currentPage + 1;
-                        let nextUrl = new URL(window.location.href);
-                        nextUrl.searchParams.set("page", nextPage);
-                        window.location.href = nextUrl.href;
-                    } else {
-                        // not if cloudflare check happens
-                        if (!document.title.includes("Just a moment...")) {
-                            GM_deleteValue("lastPage");
-                            GM_deleteValue("executingCollectingComments");
-
-                            // go back to main page
-                            const mainPageLink = document.querySelector("#video_jacket > a");
-                            log("[comments]", mainPageLink);
-                            if (mainPageLink) {
-                                // open link
-                                window.open(mainPageLink.href, "_self");
-                            }
-                        }
-                    }
-                }
-
-                // initialize
-                (async function () {
-                    let executingCollectingComments = GM_getValue("executingCollectingComments", false);
-                    if (executingCollectingComments) {
-                        // await new Promise((resolve) => setTimeout(resolve, 100)); // wait before loading the next page to ensure clipboard operation is completed
-                        loadNextPage();
-                    } else {
-                        window.addEventListener("keydown", function (event) {
-                            if (event.key === "<") {
-                                collectingLinksFromCommentsAndRgGroup();
-                            }
-                        });
-                    }
-                })();
-
-                break;
-            }
             // for searching for external download links and previews when opening tabs is required
             case /^https?:\/\/javx357\.com\/.*/i.test(url):
             case /^https?:\/\/arcjav\.com\/.*/i.test(url):
@@ -2330,7 +2335,9 @@ async function addImprovements() {
         const commentsElement = doc.querySelector("#video_comments");
         if (!commentsElement) return "";
 
-        const skipLink = /(\.gif|\.jpg|\.jpeg|user\.php|userposts\.php|ouo\.io|twitter\.com|x\.com|rg\.to(\/|%2F)folder)/i;
+        // rapidgator/rg.to links without /file/ (folders, articles, etc.) are always skipped
+        const skipLink =
+            /(\.gif|\.jpg|\.jpeg|user\.php|userposts\.php|ouo\.io|twitter\.com|x\.com|(rapidgator\.net|rg\.to)(?!(\/|%2F)file\/))/i;
         const allLinks = GM_getValue("allLinksFromComments", configurationOptions.allLinksFromComments.default);
         const isRapidgator = (url) => /(rapidgator\.net|rg\.to)/i.test(url);
 
@@ -2339,7 +2346,11 @@ async function addImprovements() {
             return Array.from(commentsElement.querySelectorAll("a"))
                 .filter((link) => !!link.offsetParent && !skipLink.test(link.href))
                 .filter((link) => allLinks || isRapidgator(link.href))
-                .map((link) => link.href)
+                .map((link) =>
+                    decodeURIComponent(
+                        link.href.replace(/https:\/\/www\.javlibrary\.com\/.*\/redirect\.php\?url=/, "").replace(/&ver=.*/, ""),
+                    ),
+                )
                 .join("\n");
         }
 
@@ -2680,7 +2691,7 @@ async function addImprovements() {
                                 let submitButton;
                                 if (isSimpleSearch) {
                                     const inputs = simplePanel.querySelectorAll("input[type='text'][name='data']");
-                                    const activeInput = Array.from(inputs).find(input => input.value.trim() !== "");
+                                    const activeInput = Array.from(inputs).find((input) => input.value.trim() !== "");
                                     submitButton = activeInput?.closest("form")?.querySelector("input[type='button']");
                                 } else {
                                     submitButton = document.querySelector("#ui-accordion-accordion-panel-1 > div.center > input");
@@ -3218,7 +3229,11 @@ function buildModal({ id, title } = {}) {
     if (id) overlay.id = `${id}-overlay`;
     overlay.className = "modal-overlay";
     overlay.style.opacity = "0";
-    requestAnimationFrame(() => requestAnimationFrame(() => { overlay.style.opacity = "1"; }));
+    requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+            overlay.style.opacity = "1";
+        }),
+    );
 
     const modal = document.createElement("div");
     if (id) modal.id = id;
@@ -3246,7 +3261,9 @@ function buildModal({ id, title } = {}) {
             document.body.style.overflow = "";
         }, 250);
     };
-    onKeyDown = (e) => { if (e.key === "Escape") close(); };
+    onKeyDown = (e) => {
+        if (e.key === "Escape") close();
+    };
 
     overlay.addEventListener("click", close);
     closeBtn.addEventListener("click", close);
@@ -3777,7 +3794,11 @@ function showNewsNotification() {
 
     const openModal = () => {
         if (document.getElementById("news-modal")) return;
-        const { modal, close: dismissModal, mount } = buildModal({
+        const {
+            modal,
+            close: dismissModal,
+            mount,
+        } = buildModal({
             id: "news-modal",
             title: `What's New<br><span style="font-size:13px;font-weight:400;opacity:0.8;">JAVLibrary Improvements UserScript</span>`,
         });

@@ -37,10 +37,24 @@ registerHqMenuCommand();
 
 let pendingNavigationDirection = null;
 let spinnerObserver = null;
+let _navigateRetries = 0;
+let _navigateRetryTimeout = null;
+let _navigateLastDirection = null;
 
 const activeMediaAttribute = "data-active-media";
+let _activeMediaEventId = null;
+
 function getActiveMedia() {
-    return document.querySelector(`[${activeMediaAttribute}="true"]`);
+    const byAttr = document.querySelector(`[${activeMediaAttribute}="true"]`);
+    if (byAttr) return byAttr;
+    if (_activeMediaEventId) {
+        const byId = document.querySelector(`[data-event-id="${_activeMediaEventId}"]`);
+        if (byId) {
+            byId.setAttribute(activeMediaAttribute, "true");
+            return byId;
+        }
+    }
+    return null;
 }
 
 // =======================================================================================
@@ -88,9 +102,18 @@ GM_addStyle(`
         color: #fff;
     }
     .mx_nav_loader--error {
+        inset: auto;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: auto;
+        padding: 10px 18px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.6);
         color: #fff;
         font-size: 14px;
         gap: 8px;
+        white-space: nowrap;
     }
 
 `);
@@ -154,6 +177,24 @@ function isLastElement(element) {
     return element === allElements[allElements.length - 1];
 }
 
+function isFirstElement(element) {
+    return element === document.querySelector(messageContainerSelector);
+}
+
+function preloadNextMedia(direction) {
+    const scrollPanel = document.querySelector(".mx_ScrollPanel");
+    if (!scrollPanel) return;
+    // Scroll ahead by a limited amount to avoid virtual scroll unloading current elements
+    const delta = scrollPanel.clientHeight * 3;
+    scrollPanel.scrollBy({ top: direction === "down" ? delta : -delta, behavior: "instant" });
+    setTimeout(() => {
+        const activeMedia = getActiveMedia();
+        if (activeMedia) {
+            activeMedia.scrollIntoView({ block: isLastElement(activeMedia) ? "end" : "center", behavior: "instant" });
+        }
+    }, 10);
+}
+
 /**
  * Finds the closest element to the vertical center of the viewport.
  * @returns {Element|null} - Closest element or null.
@@ -180,17 +221,52 @@ function getCurrentElement() {
  * @param {string} direction - "up" or "down".
  */
 function navigate(direction) {
+    if (_navigateRetryTimeout) {
+        clearTimeout(_navigateRetryTimeout);
+        _navigateRetryTimeout = null;
+    }
+    if (direction !== _navigateLastDirection) {
+        _navigateRetries = 0;
+        _navigateLastDirection = direction;
+    }
+
+    const inLightbox = !!document.querySelector(".mx_Dialog_lightbox");
     const currentElement = getActiveMedia() || (console.error("activeMedia not found"), getCurrentElement());
     const siblingType = direction === "down" ? "nextElementSibling" : "previousElementSibling";
     const nextActiveMedia = findSibling(currentElement, siblingType);
 
     if (nextActiveMedia) {
+        _navigateRetries = 0;
         setActiveMedia(nextActiveMedia);
-        if (document.querySelector(".mx_Dialog_lightbox")) {
+        if (inLightbox) {
             replaceContentInLightbox();
+            preloadNextMedia(direction);
         }
     } else if (document.querySelector("ol.mx_RoomView_MessageList .mx_Spinner")) {
+        _navigateRetries = 0;
         waitForLoadingAndNavigate(direction);
+    } else if (
+        (direction === "down" && isLastElement(currentElement)) ||
+        (direction === "up" && isFirstElement(currentElement))
+    ) {
+        _navigateRetries = 0;
+        if (inLightbox) showLightboxOverlay("ℹ", "End of chat", { autoHide: true });
+    } else if (_navigateRetries < 5) {
+        _navigateRetries++;
+        const scrollPanel = document.querySelector(".mx_ScrollPanel");
+        if (scrollPanel) {
+            scrollPanel.scrollTo({
+                top: direction === "down" ? scrollPanel.scrollHeight : 0,
+                behavior: "instant",
+            });
+        }
+        _navigateRetryTimeout = setTimeout(() => {
+            _navigateRetryTimeout = null;
+            navigate(direction);
+        }, 600);
+    } else {
+        _navigateRetries = 0;
+        if (inLightbox) showLightboxOverlay("ℹ", "No more media — scroll to load more", { autoHide: true });
     }
 }
 
@@ -209,15 +285,16 @@ function hideLightboxLoader() {
     if (media) media.style.display = "";
 }
 
-function showLightboxError(mediaEl) {
+function showLightboxOverlay(icon, message, { autoHide = false, mediaEl = null } = {}) {
     hideLightboxLoader();
     const imageView = document.querySelector(".mx_ImageView");
     if (!imageView) return;
     if (mediaEl) mediaEl.style.display = "none";
     const overlay = document.createElement("div");
     overlay.className = "mx_nav_loader mx_nav_loader--error";
-    overlay.innerHTML = `<span>⚠</span><span>Media failed to load</span>`;
+    overlay.innerHTML = `<span>${icon}</span><span>${message}</span>`;
     imageView.appendChild(overlay);
+    if (autoHide) setTimeout(hideLightboxLoader, 2500);
 }
 
 /**
@@ -269,20 +346,14 @@ function setActiveMedia(nextActiveMedia) {
         removeActiveMedia();
 
         nextActiveMedia.setAttribute(activeMediaAttribute, "true");
+        _activeMediaEventId = nextActiveMedia.dataset.eventId ?? null;
         nextActiveMedia.scrollIntoView({
             block: isLastElement(nextActiveMedia) ? "end" : "center",
             behavior: "auto",
         });
-    } else {
-        console.error("setActiveMedia: nextActiveMedia not found");
     }
 }
 
-/**
- * Removes the activeMediaAttribute attribute from the currently active element.
- * The active element is identified by the presence of the attribute `data-active-media` set to "true".
- * If no such element is found, the function does nothing.
- */
 function removeActiveMedia() {
     const activeMedia = getActiveMedia();
     if (activeMedia) {
@@ -356,7 +427,7 @@ function closeLightbox() {
                 } else {
                     clearInterval(scrollCheckInterval);
                 }
-            }, 200); // Adjust the delay as needed
+            }, 200);
         } else {
             clearInterval(scrollCheckInterval);
         }
@@ -382,7 +453,7 @@ function replaceContentInLightbox() {
     )?.src;
     const imageSource = getHqImages ? mediaSrc?.replace(/thumbnail/, "download") : mediaSrc;
     if (!imageSource) {
-        showLightboxError(imageLightboxSelector);
+        showLightboxOverlay("⚠", "Media failed to load", { mediaEl: imageLightboxSelector });
         return;
     }
 
@@ -519,6 +590,7 @@ function addEventListeners() {
     );
 
     // add listeners only once
+    const lightboxElementsWithListeners = new WeakSet();
     let lightboxListenersAdded = false;
     let timelineListenerAdded = false;
 
@@ -534,7 +606,7 @@ function addEventListeners() {
 
             waitForElement(".mx_ImageView").then((element) => {
                 // Check if the event listeners are already added
-                if (!element._listenersAdded) {
+                if (!lightboxElementsWithListeners.has(element)) {
                     element.addEventListener(
                         "click",
                         (event) => {
@@ -548,7 +620,7 @@ function addEventListeners() {
                     element.addEventListener("wheel", getWheelDirection, { passive: false });
 
                     // Mark the listener as added
-                    element._listenersAdded = true;
+                    lightboxElementsWithListeners.add(element);
                 }
 
                 lightboxListenersAdded = true;

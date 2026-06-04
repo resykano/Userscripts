@@ -1,12 +1,15 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right & a/Space keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping against the jumps on timeline pagination/scrolling issue #8565
-// @version        20250716
+// @version        20260604
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
-// @grant          GM_xmlhttpRequest
 // @grant          GM_addStyle
+// @grant          GM_getValue
+// @grant          GM_setValue
+// @grant          GM_registerMenuCommand
+// @grant          GM_unregisterMenuCommand
 // @compatible     chrome
 // @license        GPL3
 // @noframes
@@ -18,7 +21,22 @@
 // Elements
 // =======================================================================================
 
-let messageContainerSelector = "ol.mx_RoomView_MessageList li.mx_EventTile";
+const messageContainerSelector = "ol.mx_RoomView_MessageList li.mx_EventTile";
+let getHqImages = GM_getValue("getHqImages", false);
+
+let _hqMenuCommandId;
+function registerHqMenuCommand() {
+    if (_hqMenuCommandId !== undefined) GM_unregisterMenuCommand(_hqMenuCommandId);
+    _hqMenuCommandId = GM_registerMenuCommand(`${getHqImages ? "✔️" : "❌"} HQ Images in Lightbox`, () => {
+        getHqImages = !getHqImages;
+        GM_setValue("getHqImages", getHqImages);
+        registerHqMenuCommand();
+    });
+}
+registerHqMenuCommand();
+
+let pendingNavigationDirection = null;
+let spinnerObserver = null;
 
 const activeMediaAttribute = "data-active-media";
 function getActiveMedia() {
@@ -53,6 +71,28 @@ GM_addStyle(`
         background-color: var(--cpd-color-bg-subtle-secondary);
     }
 
+    /* Loading overlay in lightbox while timeline paginates */
+    .mx_ImageView {
+        position: relative;
+    }
+    .mx_nav_loader {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        pointer-events: none;
+    }
+    .mx_nav_loader > .mx_Spinner {
+        color: #fff;
+    }
+    .mx_nav_loader--error {
+        color: #fff;
+        font-size: 14px;
+        gap: 8px;
+    }
+
 `);
 
 // =======================================================================================
@@ -69,14 +109,16 @@ GM_addStyle(`
 function waitForElement(selector, index = 0, timeout) {
     return new Promise((resolve) => {
         const checkElement = () => document.querySelectorAll(selector)[index];
-        if (checkElement()) {
-            return resolve(checkElement());
+        const initial = checkElement();
+        if (initial) {
+            return resolve(initial);
         }
 
         const observer = new MutationObserver(() => {
-            if (checkElement()) {
+            const found = checkElement();
+            if (found) {
                 observer.disconnect();
-                resolve(checkElement());
+                resolve(found);
             }
         });
 
@@ -138,25 +180,84 @@ function getCurrentElement() {
  * @param {string} direction - "up" or "down".
  */
 function navigate(direction) {
-    let currentElement;
-    if (getActiveMedia()) {
-        currentElement = getActiveMedia();
-    } else {
-        console.error("activeMedia not found");
-        currentElement = getCurrentElement();
-    }
+    const currentElement = getActiveMedia() || (console.error("activeMedia not found"), getCurrentElement());
     const siblingType = direction === "down" ? "nextElementSibling" : "previousElementSibling";
     const nextActiveMedia = findSibling(currentElement, siblingType);
 
     if (nextActiveMedia) {
-        // DEBUG
-        // console.log("nextActiveMedia: ", nextActiveMedia);
         setActiveMedia(nextActiveMedia);
+        if (document.querySelector(".mx_Dialog_lightbox")) {
+            replaceContentInLightbox();
+        }
+    } else if (document.querySelector("ol.mx_RoomView_MessageList .mx_Spinner")) {
+        waitForLoadingAndNavigate(direction);
     }
+}
+
+function showLightboxLoader() {
+    const imageView = document.querySelector(".mx_ImageView");
+    if (!imageView || imageView.querySelector(".mx_nav_loader")) return;
+    const loader = document.createElement("div");
+    loader.className = "mx_nav_loader";
+    loader.innerHTML = `<div class="mx_Spinner"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" width="32" height="32" class="mx_Spinner_icon" aria-label="Loading..." role="progressbar"><circle transform="translate(8 0)" cx="0" cy="16" r="0"><animate attributeName="r" values="0; 4; 0; 0" dur="1.2s" repeatCount="indefinite" begin="0" keyTimes="0;0.2;0.7;1" keySplines="0.2 0.2 0.4 0.8;0.2 0.6 0.4 0.8;0.2 0.6 0.4 0.8" calcMode="spline"></animate></circle><circle transform="translate(16 0)" cx="0" cy="16" r="0"><animate attributeName="r" values="0; 4; 0; 0" dur="1.2s" repeatCount="indefinite" begin="0.3" keyTimes="0;0.2;0.7;1" keySplines="0.2 0.6 0.4 0.8;0.2 0.6 0.4 0.8;0.2 0.6 0.4 0.8" calcMode="spline"></animate></circle><circle transform="translate(24 0)" cx="0" cy="16" r="0"><animate attributeName="r" values="0; 4; 0; 0" dur="1.2s" repeatCount="indefinite" begin="0.6" keyTimes="0;0.2;0.7;1" keySplines="0.2 0.6 0.4 0.8;0.2 0.6 0.4 0.8;0.2 0.6 0.4 0.8" calcMode="spline"></animate></circle></svg></div>`;
+    imageView.appendChild(loader);
+}
+
+function hideLightboxLoader() {
+    document.querySelector(".mx_nav_loader")?.remove();
+    const media = document.querySelector(".mx_ImageView .mx_ImageView_image_wrapper > img, .mx_ImageView .mx_ImageView_image_wrapper > video");
+    if (media) media.style.display = "";
+}
+
+function showLightboxError(mediaEl) {
+    hideLightboxLoader();
+    const imageView = document.querySelector(".mx_ImageView");
+    if (!imageView) return;
+    if (mediaEl) mediaEl.style.display = "none";
+    const overlay = document.createElement("div");
+    overlay.className = "mx_nav_loader mx_nav_loader--error";
+    overlay.innerHTML = `<span>⚠</span><span>Media failed to load</span>`;
+    imageView.appendChild(overlay);
+}
+
+/**
+ * Waits for the timeline loading spinner to disappear, then retries navigation.
+ * Triggered when navigate() finds no sibling but a spinner is present (pagination loading).
+ * Shows a visual overlay in the lightbox while waiting.
+ * @param {string} direction - "up" or "down".
+ */
+function waitForLoadingAndNavigate(direction) {
+    pendingNavigationDirection = direction;
+
+    if (spinnerObserver) return;
 
     if (document.querySelector(".mx_Dialog_lightbox")) {
-        replaceContentInLightbox();
+        showLightboxLoader();
     }
+
+    const messageList = document.querySelector("ol.mx_RoomView_MessageList");
+
+    spinnerObserver = new MutationObserver(() => {
+        if (!document.querySelector("ol.mx_RoomView_MessageList .mx_Spinner") && pendingNavigationDirection) {
+            const dir = pendingNavigationDirection;
+            pendingNavigationDirection = null;
+            spinnerObserver.disconnect();
+            spinnerObserver = null;
+            clearTimeout(safetyTimeout);
+            setTimeout(() => navigate(dir), 100);
+        }
+    });
+
+    spinnerObserver.observe(messageList ?? document.body, { childList: true, subtree: true });
+
+    const safetyTimeout = setTimeout(() => {
+        if (spinnerObserver) {
+            spinnerObserver.disconnect();
+            spinnerObserver = null;
+            pendingNavigationDirection = null;
+            hideLightboxLoader();
+        }
+    }, 10000);
 }
 
 /**
@@ -185,7 +286,6 @@ function setActiveMedia(nextActiveMedia) {
 function removeActiveMedia() {
     const activeMedia = getActiveMedia();
     if (activeMedia) {
-        // console.error("removeActiveMedia");
         activeMedia.removeAttribute(activeMediaAttribute);
     }
 }
@@ -222,9 +322,8 @@ function findSibling(startElement, siblingType) {
  */
 function closeLightbox() {
     const currentElement = getCurrentElement();
-    if (currentElement) {
-        setActiveMedia(currentElement);
-    }
+    if (!currentElement) return;
+    setActiveMedia(currentElement);
 
     // Close the lightbox by clicking the close button
     const closeButton = document.querySelector(".mx_AccessibleButton.mx_ImageView_button.mx_ImageView_button_close");
@@ -234,7 +333,6 @@ function closeLightbox() {
     const maxAttempts = 10;
 
     function checkScroll() {
-        console.log("checkScroll: ", attempts);
         const rect = currentElement.getBoundingClientRect();
         const isInView = rect.top >= 0 && rect.bottom <= window.innerHeight;
 
@@ -250,14 +348,12 @@ function closeLightbox() {
                 const rectAfterScroll = currentElement.getBoundingClientRect();
                 const isStillInView = rectAfterScroll.top >= 0 && rectAfterScroll.bottom <= window.innerHeight;
                 if (!isStillInView && attempts < maxAttempts) {
-                    console.log("checkScroll second attempt: ", attempts);
                     currentElement.scrollIntoView({
                         block: isLastElement(currentElement) ? "end" : "center",
                         behavior: "auto",
                     });
                     attempts++;
                 } else {
-                    console.log("checkScroll completed after attempts: ", attempts);
                     clearInterval(scrollCheckInterval);
                 }
             }, 200); // Adjust the delay as needed
@@ -270,9 +366,7 @@ function closeLightbox() {
 }
 
 /**
- * Replaces the content of the lightbox with the next or previous picture depending on Mouse Wheel or cursor direction
- *
- * @param {string} direction u=Up or d=Down
+ * Replaces the content of the lightbox with the media from the currently active timeline element.
  */
 function replaceContentInLightbox() {
     let imageLightboxSelector = document.querySelector(
@@ -280,64 +374,77 @@ function replaceContentInLightbox() {
     );
     if (!imageLightboxSelector) return;
 
-    imageLightboxSelector.setAttribute("controls", "");
+    const currentElement = getActiveMedia() ?? getCurrentElement();
+    if (!currentElement) return;
 
-    let currentElement = getActiveMedia();
-    if (!currentElement) {
-        currentElement = getCurrentElement();
+    const mediaSrc = currentElement.querySelector(
+        "div.mx_EventTile_line.mx_EventTile_mediaLine.mx_EventTile_image img.mx_MImageBody_thumbnail, video.mx_MVideoBody"
+    )?.src;
+    const imageSource = getHqImages ? mediaSrc?.replace(/thumbnail/, "download") : mediaSrc;
+    if (!imageSource) {
+        showLightboxError(imageLightboxSelector);
+        return;
     }
 
-    // Update the lightbox content with the new media source
-    if (currentElement) {
-        let imageSource;
-        // with HQ images the switch to the next image is slower
-        const getHqImages = false;
-        if (getHqImages) {
-            imageSource = currentElement
-                .querySelector(
-                    "div.mx_EventTile_line.mx_EventTile_mediaLine.mx_EventTile_image img.mx_MImageBody_thumbnail, video.mx_MVideoBody"
-                )
-                ?.src.replace(/thumbnail/, "download");
-        } else {
-            imageSource = currentElement.querySelector(
-                "div.mx_EventTile_line.mx_EventTile_mediaLine.mx_EventTile_image img.mx_MImageBody_thumbnail, video.mx_MVideoBody"
-            )?.src;
-        }
-
+    // Switch between <img> and <video> tags based on the new media element
+    const hasVideo = currentElement.querySelector("video");
+    const hasImg = currentElement.querySelector("img");
+    if (hasVideo && imageLightboxSelector.tagName === "IMG") {
+        imageLightboxSelector.style.display = ""; // clear before innerHTML serialization to avoid inheriting display:none
         imageLightboxSelector.src = imageSource;
+        const parent = imageLightboxSelector.parentElement;
+        parent.innerHTML = parent.innerHTML.replace(/^<img/, "<video");
 
-        // Switch between <img> and <video> tags based on the new media element
-        const hasVideo = currentElement.querySelector("video");
-        const hasImg = currentElement.querySelector("img");
-        if (hasVideo && imageLightboxSelector?.tagName === "IMG") {
-            console.log("Switching to video in lightbox");
-            // Save parent before replacing innerHTML
-            const parent = imageLightboxSelector.parentElement;
-            parent.innerHTML = parent.innerHTML.replace(/^<img/, "<video");
-
-            setTimeout(() => {
-                // After replacing innerHTML, the old imageLightboxSelector is invalid!
-                const newVideo = parent.querySelector("video");
-                if (newVideo) {
-                    newVideo.setAttribute("controls", "");
-                    newVideo.autoplay = true; // Automatically play the video
-                    newVideo.play();
-                }
-            }, 300);
-            return; // Prevent further code from using the old selector
+        showLightboxLoader();
+        setTimeout(() => {
+            // After replacing innerHTML, the old imageLightboxSelector is invalid!
+            const newVideo = parent.querySelector("video");
+            if (newVideo) {
+                newVideo.setAttribute("controls", "");
+                newVideo.autoplay = true;
+                newVideo.addEventListener("loadeddata", hideLightboxLoader, { once: true });
+                newVideo.addEventListener("error", hideLightboxLoader, { once: true });
+                if (newVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) hideLightboxLoader();
+                newVideo.play();
+            }
+        }, 300);
+        return;
+    }
+    // Only switch to <img> if the current element contains an image and NOT a video!
+    if (hasImg && !hasVideo && imageLightboxSelector.tagName === "VIDEO") {
+        imageLightboxSelector.style.display = ""; // clear before innerHTML serialization to avoid inheriting display:none
+        imageLightboxSelector.src = imageSource;
+        const parent = imageLightboxSelector.parentElement;
+        parent.innerHTML = parent.innerHTML.replace(/^<video/, "<img");
+        const newImg = parent.querySelector("img");
+        if (newImg) {
+            showLightboxLoader();
+            newImg.addEventListener("load", hideLightboxLoader, { once: true });
+            newImg.addEventListener("error", hideLightboxLoader, { once: true });
         }
-        // Only switch to <img> if the current element contains an image and NOT a video!
-        if (hasImg && !hasVideo && imageLightboxSelector?.tagName === "VIDEO") {
-            console.log("Switching to image in lightbox");
-            const parent = imageLightboxSelector.parentElement;
-            parent.innerHTML = parent.innerHTML.replace(/^<video/, "<img");
-            return;
+        return;
+    }
+    // If the current lightbox element is a video, play automatically
+    if (imageLightboxSelector.tagName === "VIDEO") {
+        imageLightboxSelector.setAttribute("controls", "");
+        imageLightboxSelector.autoplay = true;
+        imageLightboxSelector.addEventListener("loadeddata", hideLightboxLoader, { once: true });
+        imageLightboxSelector.addEventListener("error", hideLightboxLoader, { once: true });
+        imageLightboxSelector.src = imageSource;
+        if (imageLightboxSelector.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+            showLightboxLoader();
+        } else {
+            hideLightboxLoader();
         }
-        // If the current lightbox element is a video, play automatically
-        if (imageLightboxSelector?.tagName === "VIDEO") {
-            imageLightboxSelector.setAttribute("controls", "");
-            imageLightboxSelector.autoplay = true;
-            imageLightboxSelector.play();
+        imageLightboxSelector.play();
+    } else {
+        imageLightboxSelector.addEventListener("load", hideLightboxLoader, { once: true });
+        imageLightboxSelector.addEventListener("error", hideLightboxLoader, { once: true });
+        imageLightboxSelector.src = imageSource;
+        if (!imageLightboxSelector.complete) {
+            showLightboxLoader();
+        } else {
+            hideLightboxLoader();
         }
     }
 }
@@ -356,15 +463,19 @@ function addEventListeners() {
                     event.stopPropagation();
                     closeLightbox();
                 } else {
-                    // prevent default behavior for all keys except a, Space, ArrowUp, ArrowLeft, ArrowRight
-                    // to not writing in message composer
+                    // prevent default behavior for regular keys to not write in message composer
+                    // but let modifier combos (Ctrl+R, Ctrl+S, ...) and function keys (F12, ...) pass through
+                    const isModifierCombo = event.ctrlKey || event.altKey || event.metaKey;
+                    const isFunctionKey = /^F\d+$/.test(event.key);
                     if (
-                        event.key !== "a" ||
-                        event.key !== " " ||
-                        event.key !== "ArrowUp" ||
-                        event.key !== "ArrowLeft" ||
-                        event.key !== "ArrowRight" ||
-                        event.key !== "ArrowLeft"
+                        !isModifierCombo &&
+                        !isFunctionKey &&
+                        event.key !== "a" &&
+                        event.key !== " " &&
+                        event.key !== "ArrowUp" &&
+                        event.key !== "ArrowDown" &&
+                        event.key !== "ArrowLeft" &&
+                        event.key !== "ArrowRight"
                     ) {
                         event.preventDefault();
                         event.stopPropagation(); // prevent focus on message composer
@@ -427,10 +538,7 @@ function addEventListeners() {
                     element.addEventListener(
                         "click",
                         (event) => {
-                            const target = event.target;
-                            // Close lightbox if clicking the background
-                            if (target.matches(".mx_ImageView > .mx_ImageView_image_wrapper > img")) {
-                                console.log("Lightbox clicked, closing...");
+                            if (event.target.matches(".mx_ImageView > .mx_ImageView_image_wrapper > img")) {
                                 closeLightbox();
                             }
                         },
@@ -454,7 +562,7 @@ function addEventListeners() {
                         setActiveMedia(messageContainer);
                     }
                 }
-            }, true);
+            });
         } else if (!lightbox && !timelineListenerAdded) {
             // Workaround: When the lightbox is closed, scroll to the active element as click event does not work after a video
             const activeMedia = getActiveMedia();

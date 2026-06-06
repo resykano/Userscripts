@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260531.1
+// @version        20260606
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1659,14 +1659,16 @@ async function addImprovements() {
     })();
 
     function removeRedirects() {
-        let externalLinks = document.querySelectorAll(
-            "table[id^=comment] > tbody > tr:nth-child(1) > td.t > div a[href^='redirect.php']",
-        );
-        for (let externalLink of externalLinks) {
-            externalLink.href = decodeURIComponent(
-                externalLink.href?.replace(/https:\/\/www\.javlibrary\.com\/.*\/redirect\.php\?url=/, "").replace(/\&ver=.*/, ""),
+        setTimeout(() => {
+            let externalLinks = document.querySelectorAll(
+                "table[id^=comment] > tbody > tr:nth-child(1) > td.t > div a[href^='redirect.php']",
             );
-        }
+            for (let externalLink of externalLinks) {
+                externalLink.href = decodeURIComponent(
+                    externalLink.href?.replace(/https:\/\/www\.javlibrary\.com\/.*\/redirect\.php\?url=/, "").replace(/\&ver=.*/, ""),
+                );
+            }
+        }, 500);
     }
 
     function removeLinkInTitle() {
@@ -3925,6 +3927,22 @@ function addConfigIcon() {
     document.body.appendChild(icon);
 }
 
+function addHomeToNavMenu() {
+    log("Adding Home link to navigation menu");
+    const leftmenu = document.querySelector("#leftmenu");
+    if (!leftmenu) return;
+
+    const langMatch = window.location.pathname.match(/^\/([a-z]{2})\//);
+    if (!langMatch) return;
+
+    const homeUrl = `${window.location.origin}/${langMatch[1]}/`;
+
+    const homeLink = document.createElement("ul");
+    homeLink.style.marginBottom = "4px";
+    homeLink.innerHTML = `<li><a href="${homeUrl}">Home</a></li>`;
+    leftmenu.firstElementChild.insertAdjacentElement("afterbegin", homeLink);
+}
+
 // =======================================================================================
 // Main
 // =======================================================================================
@@ -3954,13 +3972,15 @@ function main() {
             }, 10000);
         } else {
             if (isJavLibrary) initializeBeforeRender();
-
+            
             const executeFunctions = () => {
                 addImprovements();
                 if (isJavLibrary) addVideoThumbnails();
+                if (isJavLibrary) addHomeToNavMenu();
             };
-
-            setTimeout(executeFunctions, 100);
+            
+            setTimeout(executeFunctions, 10);
+            
         }
     }
 }

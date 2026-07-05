@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260606
+// @version        20260705
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -67,11 +67,15 @@
 // bind preserves call site in browser console (wrapper functions would point here instead)
 const log = GM_getValue("authorsMode", false) ? console.log.bind(console) : () => {};
 
+// DEBUG: keep RG search tabs open instead of closing, so console logs stay inspectable. Revert after debugging.
+const DEBUG_KEEP_TABS_OPEN = false;
+
 const NEWS_VERSION = "20260530";
 const newsEntries = [
     {
         version: NEWS_VERSION,
         changes: [
+            "added a Home link to the navigation menu for easier access to the main page",
             "Comment links are now collected via fetch in the background, no page navigation required. Falls back to the previous method if Cloudflare blocks the request.",
             'Comment links now collect Rapidgator links only by default. Enable "Copy all links from comments" in config to restore the previous behavior.',
         ],
@@ -498,25 +502,29 @@ function findVideoUrlsForAVID(doc, avid, baseUrl) {
 // All other tabs just close without copying.
 function coordinateTabs(content) {
     // Remove stale keys older than 30 s (left by crashed/closed lead tabs)
+    // also catches keys from before the "_" separator fix, whose glued-together
+    // Date.now()+Math.random() digits parse into a bogus, wildly off timestamp
     const now = Date.now();
     Object.keys(localStorage)
         .filter((k) => k.startsWith("rgLinks_"))
         .forEach((k) => {
-            const ts = parseInt(k.slice("rgLinks_".length));
-            if (!isNaN(ts) && now - ts > 30000) localStorage.removeItem(k);
+            const ts = parseInt(k.slice("rgLinks_".length), 10);
+            if (isNaN(ts) || Math.abs(now - ts) > 30000) localStorage.removeItem(k);
         });
 
-    const myTabKey = "rgLinks_" + Date.now() + Math.random();
+    const myTabKey = "rgLinks_" + now + "_" + Math.random();
     localStorage.setItem(myTabKey, content);
     setTimeout(() => {
         const keys = Object.keys(localStorage)
             .filter((k) => k.startsWith("rgLinks_"))
             .sort();
         if (keys[0] === myTabKey) {
-            GM_setClipboard(keys.map((k) => localStorage.getItem(k)).join(""));
+            const links = keys.map((k) => localStorage.getItem(k)).join("");
+            GM_setClipboard(links);
+            log("[RG] coordinateTabs: copied to clipboard", links);
             keys.forEach((k) => localStorage.removeItem(k));
         }
-        window.close();
+        if (!DEBUG_KEEP_TABS_OPEN) window.close();
     }, 100);
 }
 
@@ -1086,7 +1094,7 @@ function externalSearch() {
             searchTerm = match?.[1];
         }
         if (!searchTerm) {
-            window.close();
+            if (!DEBUG_KEEP_TABS_OPEN) window.close();
             return;
         }
 
@@ -1101,14 +1109,14 @@ function externalSearch() {
         log(`[ext-search] found ${videoLinks.length} video link(s) for "${searchTerm}"`, videoLinks);
 
         if (videoLinks.length === 0) {
-            window.close();
+            if (!DEBUG_KEEP_TABS_OPEN) window.close();
             return;
         }
 
         videoLinks.forEach((href, index) => {
             setTimeout(() => GM_openInTab(href, { active: false }), index * 100);
         });
-        setTimeout(() => window.close(), videoLinks.length * 100 + 500);
+        if (!DEBUG_KEEP_TABS_OPEN) setTimeout(() => window.close(), videoLinks.length * 100 + 500);
     }
 
     function handleRapidgatorPages() {
@@ -1122,7 +1130,7 @@ function externalSearch() {
                 const rapidgatorSources = Array.from(sources).filter((source) => source.innerText.includes("Rapidgator"));
 
                 if (rapidgatorSources.length === 0) {
-                    window.close();
+                    if (!DEBUG_KEEP_TABS_OPEN) window.close();
                     return;
                 }
 
@@ -1159,7 +1167,7 @@ function externalSearch() {
 
                     if (urlMatch) {
                         GM_setClipboard(urlMatch[1]);
-                        setTimeout(() => window.close(), 200);
+                        if (!DEBUG_KEEP_TABS_OPEN) setTimeout(() => window.close(), 200);
                     }
                 }
             }
@@ -1169,9 +1177,10 @@ function externalSearch() {
                     GM_openInTab(link.href, { active: false });
                 }
             });
-            setTimeout(() => window.close(), 200);
+            if (!DEBUG_KEEP_TABS_OPEN) setTimeout(() => window.close(), 200);
         } else {
             const rapidgatorLinks = document.querySelectorAll("a[href*=rapidgator]");
+            log(`[RG] generic branch: found ${rapidgatorLinks.length} rapidgator link(s) on ${hostname}`);
             if (rapidgatorLinks.length > 0) {
                 let collectedLinks = "";
 
@@ -1180,7 +1189,7 @@ function externalSearch() {
                 });
 
                 coordinateTabs(collectedLinks);
-            } else {
+            } else if (!DEBUG_KEEP_TABS_OPEN) {
                 window.close();
             }
         }

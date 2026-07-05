@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260705
+// @version        20260705.1
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -540,6 +540,9 @@ function xmlhttpRequest(url, referer = "", timeout = null) {
 
     return new Promise((resolve, reject) => {
         log(`[xhr] request: ${url}`);
+        let settled = false;
+        let fallbackTimeoutId = null;
+
         let details = {
             method: "GET",
             url: url,
@@ -549,6 +552,9 @@ function xmlhttpRequest(url, referer = "", timeout = null) {
             },
             timeout: timeout,
             onload: function (response) {
+                if (settled) return;
+                settled = true;
+                clearTimeout(fallbackTimeoutId);
                 if (response.status >= 200 && response.status < 300) {
                     resolve({
                         isSuccess: true,
@@ -562,15 +568,36 @@ function xmlhttpRequest(url, referer = "", timeout = null) {
                 }
             },
             onerror: function (response) {
+                if (settled) return;
+                settled = true;
+                clearTimeout(fallbackTimeoutId);
                 log(`[xhr] ${details.url} : error`);
                 reject({ isSuccess: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
             },
             ontimeout: function (response) {
+                if (settled) return;
+                settled = true;
+                clearTimeout(fallbackTimeoutId);
                 log(`[xhr] ${details.url} ${details.timeout}ms timeout`);
                 reject({ isSuccess: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
             },
         };
-        GM_xmlhttpRequest(details);
+
+        const request = GM_xmlhttpRequest(details);
+
+        // GM_xmlhttpRequest's own "timeout" option is unreliable here: the redirect-handling
+        // wrapper above (see "Requires Tampermonkey 5.3.2+") forces fetch mode for manual
+        // redirects, and Tampermonkey's fetch mode does not reliably honor "timeout"/fire
+        // ontimeout. Enforce a hard cutoff independently so requests can't hang indefinitely.
+        if (timeout && timeout > 0) {
+            fallbackTimeoutId = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                if (request && typeof request.abort === "function") request.abort();
+                log(`[xhr] ${url} ${timeout}ms timeout (fallback)`);
+                reject({ isSuccess: false, responseHeaders: null, responseText: null });
+            }, timeout);
+        }
     });
 }
 
@@ -3071,7 +3098,7 @@ function addVideoThumbnails() {
             const result = await xmlhttpRequest(linkUrl);
             if (!result.isSuccess) return null;
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const thumbnailImg = doc.querySelectorAll(`img[alt^="${avid}" i]`);
+            const thumbnailImg = doc.querySelectorAll(`img[alt*="${avid}" i]`);
             if (!thumbnailImg || thumbnailImg.length === 0) return null;
 
             const rawHref = thumbnailImg[thumbnailImg.length - 1].closest("a")?.getAttribute("href");

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260705.1
+// @version        20260706
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -3000,11 +3000,13 @@ function addVideoThumbnails() {
             if (!result.isSuccess) return null;
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
             const imageNodeList = doc.querySelectorAll(
-                '.entry-content a img[data-src*="pixhost."], .entry-content a img[data-src*="imagetwist."]',
+                '.entry-content a img[data-src*="pixhost."], .entry-content a img[data-src*="imagetwist."], ' +
+                    '.entry-content a img[src*="pixhost."], .entry-content a img[src*="imagetwist."]',
             );
 
             if (imageNodeList.length > 0) {
-                let targetImageUrl = imageNodeList[imageNodeList.length - 1].dataset.src;
+                const lastImageNode = imageNodeList[imageNodeList.length - 1];
+                let targetImageUrl = lastImageNode.dataset.src || lastImageNode.getAttribute("src");
                 targetImageUrl = normalizeImageUrl(targetImageUrl);
                 if (/imagetwist/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
 

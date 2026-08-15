@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260706
+// @version        20260808
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -15,7 +15,6 @@
 // @match          *://supjav.com/*
 // @match          *://missav.ai/*
 // @match          *://maddawgjav.net/*
-// @match          *://video-jav.net/*
 // @match          *://www.akiba-online.com/search/*
 // @match          *://bt1207so.top/?find*
 // @match          *://rapidgator.net/*
@@ -31,6 +30,8 @@
 // @connect        jav-load.com
 // @connect        javakiba.org
 // @connect        video-jav.net
+// @connect        javfree.me
+// @connect        cf.javfree.me
 // @connect        javgg.me
 // @connect        javx357.com
 // @connect        twojav.com
@@ -42,6 +43,7 @@
 // @connect        mm-cg.com
 // @connect        javmenu.com
 // @connect        supjav.com
+// @connect        www.akiba-online.com
 // @connect        *
 // @grant          GM_registerMenuCommand
 // @grant          GM_xmlhttpRequest
@@ -70,14 +72,21 @@ const log = GM_getValue("authorsMode", false) ? console.log.bind(console) : () =
 // DEBUG: keep RG search tabs open instead of closing, so console logs stay inspectable. Revert after debugging.
 const DEBUG_KEEP_TABS_OPEN = false;
 
-const NEWS_VERSION = "20260530";
+// only bump this when the entries below change
+const NEWS_VERSION = "20260808";
+// Written for end users, not for developers:
+// - only what someone actually notices: new/removed links and options, changed behavior, annoying bugs.
+//   No refactorings, internals or jargon — phrase the benefit, not the implementation.
+// - keep it to ~3-5 one-sentence entries, with small fixes merged into a single "Fixed: ..." line.
 const newsEntries = [
     {
         version: NEWS_VERSION,
         changes: [
-            "added a Home link to the navigation menu for easier access to the main page",
-            "Comment links are now collected via fetch in the background, no page navigation required. Falls back to the previous method if Cloudflare blocks the request.",
-            'Comment links now collect Rapidgator links only by default. Enable "Copy all links from comments" in config to restore the previous behavior.',
+            "Akiba-Online, Video-JAV & JAVFree are now included in the automatic thumbnail search, so more videos will show a preview image without any manual searching. Max JAV was tested too, but the site blocks these requests.",
+            "Video thumbnails now appear faster, since all sources are checked at the same time instead of one after another.",
+            "New links: Xasiat in the stream group, plus Google and Yandex image search in the alternative searches.",
+            "Searches match the video ID more precisely now, so a search for ABC-123 no longer picks up results for ABC-1234 or XABC-123.",
+            "Fixed: the correction button could not be clicked because the video info box overlapped it.",
         ],
         feedback: {
             text: "Found a bug, have a suggestion, or know a link that should be included/removed? Let me know at:",
@@ -167,8 +176,8 @@ const configurationOptions = {
             label: "Alternative research platforms",
             default: true,
         },
-        searchGroupDuckDuckGo: {
-            label: "DuckDuckGo searches",
+        searchAlternativeSearches: {
+            label: "Alternative searches",
             default: true,
         },
     },
@@ -454,8 +463,17 @@ function waitForElement(selector, index = 0, timeoutMs = 0) {
 // page matching the given AVID. Used to verify that a search results page actually
 // contains the target video before navigating there.
 // Returns deduplicated, original-case absolute URLs.
+
+// Checks whether `avid` appears in `text` as a whole label, not merely as a substring of a longer one
+// (e.g. a plain .includes() would wrongly match "ABC-123" inside "XABC-123" or "ABC-1234"). Hyphens are
+// treated as optional since some sites/uploads omit them.
+function avidTextMatches(text, avid) {
+    if (!text) return false;
+    const flexibleAvid = avid.replace(/-/g, "-?");
+    return new RegExp(`(?<![a-zA-Z0-9])${flexibleAvid}(?!\\d)`, "i").test(text);
+}
+
 function findVideoUrlsForAVID(doc, avid, baseUrl) {
-    const lower = avid.toLowerCase();
     const baseDomain = new URL(baseUrl).hostname;
     const seen = new Set();
     const results = [];
@@ -469,7 +487,7 @@ function findVideoUrlsForAVID(doc, avid, baseUrl) {
             u.hash = ""; // strip fragments like /#more so they don't create duplicates
             resolved = u.href;
         } catch {
-            console.warn(`[findVideoUrlsForAVID] invalid href skipped: "${a.getAttribute("href")}"`);
+            console.warn(`[avid-match] invalid href skipped: "${a.getAttribute("href")}"`);
             continue;
         }
 
@@ -481,13 +499,13 @@ function findVideoUrlsForAVID(doc, avid, baseUrl) {
 
         // match by href (AVID in URL path, not just query string), title attribute, or anchor text content — but never search/listing pages
         const isSearchPage = /\/[^/]*search[^/]*(\/|$)/.test(urlPath);
-        const titleMatch = (a.getAttribute("title") || "").toLowerCase().includes(lower);
-        const textMatch = a.textContent.toLowerCase().includes(lower);
-        const hrefMatch = urlPath.includes(lower) && !isSearchPage;
+        const titleMatch = avidTextMatches(a.getAttribute("title"), avid);
+        const textMatch = avidTextMatches(a.textContent, avid);
+        const hrefMatch = avidTextMatches(urlPath, avid) && !isSearchPage;
 
         if ((hrefMatch || titleMatch || textMatch) && !isSearchPage && !seen.has(normalized)) {
             const matchType = hrefMatch ? "href" : titleMatch ? "title" : "text";
-            log(`[findVideoUrlsForAVID] match (${matchType}): ${resolved}`);
+            log(`[avid-match] match (${matchType}): ${resolved}`);
             seen.add(normalized);
             results.push(resolved);
         }
@@ -521,7 +539,7 @@ function coordinateTabs(content) {
         if (keys[0] === myTabKey) {
             const links = keys.map((k) => localStorage.getItem(k)).join("");
             GM_setClipboard(links);
-            log("[RG] coordinateTabs: copied to clipboard", links);
+            log("[rg] coordinateTabs: copied to clipboard", links);
             keys.forEach((k) => localStorage.removeItem(k));
         }
         if (!DEBUG_KEEP_TABS_OPEN) window.close();
@@ -533,7 +551,7 @@ function isCloudflare(html) {
     return html.includes("Just a moment") || html.includes("cf-browser-verification");
 }
 
-function xmlhttpRequest(url, referer = "", timeout = null) {
+function xmlhttpRequest(url, referer = "", timeout = null, options = {}) {
     if (timeout === null) {
         timeout = getDataFetchTimeout();
     }
@@ -544,12 +562,14 @@ function xmlhttpRequest(url, referer = "", timeout = null) {
         let fallbackTimeoutId = null;
 
         let details = {
-            method: "GET",
+            method: options.method || "GET",
             url: url,
             headers: {
                 Referer: referer,
                 "User-Agent": "Mozilla/5.0 (x64; rv) Gecko Firefox",
+                ...options.headers,
             },
+            data: options.data,
             timeout: timeout,
             onload: function (response) {
                 if (settled) return;
@@ -564,7 +584,12 @@ function xmlhttpRequest(url, referer = "", timeout = null) {
                         response,
                     });
                 } else {
-                    resolve({ isSuccess: false, responseHeaders: response.responseHeaders, responseText: response.responseText });
+                    resolve({
+                        isSuccess: false,
+                        status: response.status,
+                        responseHeaders: response.responseHeaders,
+                        responseText: response.responseText,
+                    });
                 }
             },
             onerror: function (response) {
@@ -841,6 +866,11 @@ function addImprovementsCss() {
                 #video_title {
                     border-bottom: unset !important;
                     margin-bottom: 10px
+                }
+
+                /* make correction button clickable even when the video_info overlaps */
+                button.btnCorrection {
+                    z-index: 1;
                 }
                 
                 #video_info {
@@ -1133,7 +1163,7 @@ function externalSearch() {
             await new Promise((resolve) => setTimeout(resolve, 500));
         }
 
-        log(`[ext-search] found ${videoLinks.length} video link(s) for "${searchTerm}"`, videoLinks);
+        log(`[search-ext] found ${videoLinks.length} video link(s) for "${searchTerm}"`, videoLinks);
 
         if (videoLinks.length === 0) {
             if (!DEBUG_KEEP_TABS_OPEN) window.close();
@@ -1147,7 +1177,7 @@ function externalSearch() {
     }
 
     function handleRapidgatorPages() {
-        log("[RG] handleRapidgatorPages");
+        log("[rg] handleRapidgatorPages");
 
         // handle hidden rapidgator links
         if (hostname === "jav.guru") {
@@ -1199,15 +1229,23 @@ function externalSearch() {
                 }
             }
         } else if (hostname === "supjav.com") {
+            // TODO: rgLinkOpened doesn't seem to help; it needs to be tested further
+            let rgLinkOpened = false;
             document.querySelectorAll("body > div.main > div > div.video-wrap > div.left > div.downs > div > a").forEach((link) => {
                 if (link.textContent.startsWith("RG")) {
                     GM_openInTab(link.href, { active: false });
+                    rgLinkOpened = true;
                 }
             });
-            if (!DEBUG_KEEP_TABS_OPEN) setTimeout(() => window.close(), 200);
+            // Video detail page (RG link found and opened in a new tab): safe to close quickly.
+            // dl-redirect page (no ".downs" found): give it time to finish its own navigation to
+            // rapidgator.net — that navigation destroys this document and cancels the timeout below
+            // before it fires. Only close as a last-resort fallback if it's still stuck here after
+            // 8s, so a dead/blocked link doesn't leak a background tab forever.
+            if (!DEBUG_KEEP_TABS_OPEN) setTimeout(() => window.close(), rgLinkOpened ? 200 : 8000);
         } else {
             const rapidgatorLinks = document.querySelectorAll("a[href*=rapidgator]");
-            log(`[RG] generic branch: found ${rapidgatorLinks.length} rapidgator link(s) on ${hostname}`);
+            log(`[rg] generic branch: found ${rapidgatorLinks.length} rapidgator link(s) on ${hostname}`);
             if (rapidgatorLinks.length > 0) {
                 let collectedLinks = "";
 
@@ -1363,7 +1401,7 @@ async function addImprovements() {
                     setTimeout(() => {
                         if (GM_getValue("externalSearchModeSession", 0) === mySession) {
                             GM_setValue("externalSearchMode", false);
-                            log("[ext-search] externalSearchMode off (fallback)");
+                            log("[search-ext] externalSearchMode off (fallback)");
                         }
                     }, timeout);
                 }
@@ -1568,7 +1606,6 @@ async function addImprovements() {
             case /^https?:\/\/supjav\.com\/.*/i.test(url):
             case /^https?:\/\/missav\.ai\/.*/i.test(url):
             case /^https?:\/\/maddawgjav\.net\/.*/i.test(url):
-            case /^https?:\/\/video-jav\.net\/.*/i.test(url):
             case /^https?:\/\/javakiba\.org\/.*/i.test(url): {
                 let externalSearchMode = GM_getValue("externalSearchMode", false);
                 if (externalSearchMode) {
@@ -1598,25 +1635,34 @@ async function addImprovements() {
             }
             // Akiba auto search and open
             case /^https?:\/\/www\.akiba-online\.com\/search\/.*/i.test(url): {
-                function search() {
+                async function search() {
                     // Extract the current parameter
                     const paramName = "search";
                     const searchTerm = new URLSearchParams(window.location.search).get(paramName);
+                    if (!searchTerm) return;
 
-                    if (searchTerm) {
-                        document
-                            .querySelector(
-                                "#top > div.p-body > div > div.uix_contentWrapper > div > div > div > form > div > dl > dd > div > div.formSubmitRow-controls > button",
-                            )
-                            .click();
-
-                        // close window if no result
-                        setTimeout(() => {
-                            if (document.querySelector("body > div.flashMessage.is-active > div").textContent === "No results found.") {
-                                window.close();
-                            }
-                        }, 500);
+                    // The script runs at document-start, so the form (and the site's own JS that makes the
+                    // button interactive) may not exist yet — wait for it instead of clicking blindly.
+                    const button = await waitForElement(
+                        "#top > div.p-body > div > div.uix_contentWrapper > div > div > div > form > div > dl > dd > div > div.formSubmitRow-controls > button",
+                        0,
+                        10000,
+                    );
+                    if (!button) {
+                        log("[search-ext][akiba] search button never appeared, closing");
+                        window.close();
+                        return;
                     }
+
+                    button.click();
+
+                    // close window if no result
+                    setTimeout(() => {
+                        const flashMessage = document.querySelector("body > div.flashMessage.is-active > div");
+                        if (flashMessage?.textContent === "No results found.") {
+                            window.close();
+                        }
+                    }, 500);
                 }
 
                 function autoOpenResults() {
@@ -1627,7 +1673,7 @@ async function addImprovements() {
                     if (postTitles.length === 0) return;
 
                     // Helper function to check if a title matches the search term
-                    const isMatchingTitle = (element, term) => element?.textContent.toLowerCase().includes(term);
+                    const isMatchingTitle = (element, term) => avidTextMatches(element?.textContent, term);
 
                     if (postTitles.length === 1) {
                         if (searchTerm && isMatchingTitle(postTitles[0], searchTerm)) {
@@ -1990,15 +2036,15 @@ async function addImprovements() {
     // Returns array of RG links, or null if Cloudflare was detected (triggers tab fallback)
     async function bgFetchRgLinks(searchUrl, avid) {
         const site = new URL(searchUrl).hostname;
-        log(`[RG-BG] ${site}: fetching ${searchUrl}`);
+        log(`[rg-bg] ${site}: fetching ${searchUrl}`);
 
         const resp = await xmlhttpRequest(searchUrl).catch(() => null);
         if (!resp) {
-            log(`[RG-BG] ${site}: request failed (null)`);
+            log(`[rg-bg] ${site}: request failed (null)`);
             return [];
         }
         if (isCloudflare(resp.responseText)) {
-            log(`[RG-BG] ${site}: Cloudflare detected → tab fallback`);
+            log(`[rg-bg] ${site}: Cloudflare detected → tab fallback`);
             return null;
         }
 
@@ -2007,21 +2053,21 @@ async function addImprovements() {
 
         const videoUrls = findVideoUrlsForAVID(searchDoc, avid, searchUrl);
         if (videoUrls.length === 0) {
-            log(`[RG-BG] ${site}: no video pages found for ${avid}`);
+            log(`[rg-bg] ${site}: no video pages found for ${avid}`);
             return [];
         }
-        log(`[RG-BG] ${site}: found ${videoUrls.length} video page(s)`, videoUrls);
+        log(`[rg-bg] ${site}: found ${videoUrls.length} video page(s)`, videoUrls);
 
         const allLinks = new Set();
         await Promise.all(
             videoUrls.map(async (videoUrl) => {
                 const vResp = await xmlhttpRequest(videoUrl).catch(() => null);
                 if (!vResp) {
-                    log(`[RG-BG] ${site}: video page request failed: ${videoUrl}`);
+                    log(`[rg-bg] ${site}: video page request failed: ${videoUrl}`);
                     return;
                 }
                 if (isCloudflare(vResp.responseText)) {
-                    log(`[RG-BG] ${site}: Cloudflare on video page: ${videoUrl}`);
+                    log(`[rg-bg] ${site}: Cloudflare on video page: ${videoUrl}`);
                     return;
                 }
                 const videoDoc = parser.parseFromString(vResp.responseText, "text/html");
@@ -2033,7 +2079,7 @@ async function addImprovements() {
         );
 
         const links = [...allLinks];
-        log(`[RG-BG] ${site}: found ${links.length} RG link(s)`, links);
+        log(`[rg-bg] ${site}: found ${links.length} RG link(s)`, links);
         return links;
     }
 
@@ -2045,7 +2091,7 @@ async function addImprovements() {
         setTimeout(() => {
             if (GM_getValue("externalSearchModeSession", 0) === sessionId) {
                 GM_setValue("externalSearchMode", false);
-                log("[ext-search] externalSearchMode off");
+                log("[search-ext] externalSearchMode off");
             }
         }, duration);
     }
@@ -2055,7 +2101,7 @@ async function addImprovements() {
         const bgLinks = groupLinks.filter((a) => a.dataset.bgFetch === "true");
         const tabLinks = groupLinks.filter((a) => a.dataset.bgFetch !== "true");
         log(
-            "[RG] Starting collect for",
+            "[rg] Starting collect for",
             avid,
             "— bg:",
             bgLinks.map((a) => a.href),
@@ -2073,17 +2119,17 @@ async function addImprovements() {
         });
 
         log(
-            `[RG] Background: ${collectedLinks.length} link(s) collected, ${cfTabUrls.length} CF fallback(s), ${tabLinks.length} tab-only source(s)`,
+            `[rg] Background: ${collectedLinks.length} link(s) collected, ${cfTabUrls.length} CF fallback(s), ${tabLinks.length} tab-only source(s)`,
         );
         if (collectedLinks.length > 0) {
-            log("[RG] Copying to clipboard:", collectedLinks);
+            log("[rg] Copying to clipboard:", collectedLinks);
             GM_setClipboard(collectedLinks.join("\n"));
         }
 
         setExternalSearchMode();
 
         const tabsToOpen = [...tabLinks.map((a) => a.href), ...cfTabUrls];
-        log("[RG] Opening tabs:", tabsToOpen);
+        log("[rg] Opening tabs:", tabsToOpen);
         for (const url of tabsToOpen) {
             GM_openInTab(url, { active: false });
         }
@@ -2187,13 +2233,13 @@ async function addImprovements() {
         if (GM_getValue("searchGroupThumbnails1", configurationOptions.searchGroups.searchGroupThumbnails1.default)) {
             const { actionTd, linksTd } = addGroupRow("Thumbnails 1:", "Thumbnails-1-Group");
             addGroupActionButton(actionTd, "Search All", "Thumbnails-1-Group", null, true);
+            addSearchLinkAndOpenAllButton("Max JAV", `https://maxjav.com/?s=${avid}`, "Thumbnails-1-Group", linksTd);
             addSearchLinkAndOpenAllButton(
                 "Akiba-Online",
                 `https://www.akiba-online.com/search/?q=${avid}&c%5Btitle_only%5D=1&o=date&search=${avid}`,
                 "Thumbnails-1-Group",
                 linksTd,
             );
-            addSearchLinkAndOpenAllButton("Max JAV", `https://maxjav.com/?s=${avid}`, "Thumbnails-1-Group", linksTd);
         }
 
         // Thumbnails 2
@@ -2201,7 +2247,6 @@ async function addImprovements() {
             const { actionTd, linksTd } = addGroupRow("Thumbnails 2:", "Thumbnails-2-Group");
             addGroupActionButton(actionTd, "Search All", "Thumbnails-2-Group", () => prefetchGroupResults("Thumbnails-2-Group"));
             addSearchLinkAndOpenAllButton("JAV-Load", `https://jav-load.com/?s=${avid}`, "Thumbnails-2-Group", linksTd);
-            addSearchLinkAndOpenAllButton("Video-JAV", `http://video-jav.net/?s=${avid}`, "Thumbnails-2-Group", linksTd);
             addSearchLinkAndOpenAllButton("JAVAkiba", `https://javakiba.org/?s=${avid}`, "Thumbnails-2-Group", linksTd);
             if (GM_getValue("prefetchOnLoadThumbnails2", configurationOptions.prefetchOnLoad.prefetchOnLoadThumbnails2.default))
                 prefetchGroupResults("Thumbnails-2-Group");
@@ -2278,6 +2323,7 @@ async function addImprovements() {
             addSearchLinkAndOpenAllButton("SEXTB", `https://sextb.net/search/${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("Supjav", `https://supjav.com/?s=${avid}`, "Stream-Group", linksTd);
             addSearchLinkAndOpenAllButton("TwoJAV", `https://www.twojav.com/en/search?q=${avid}`, "Stream-Group", linksTd);
+            addSearchLinkAndOpenAllButton("Xasiat", `https://www.xasiat.com/search/${avid}`, "Stream-Group", linksTd);
 
             if (GM_getValue("prefetchOnLoadStream", configurationOptions.prefetchOnLoad.prefetchOnLoadStream.default))
                 prefetchGroupResults("Stream-Group");
@@ -2290,9 +2336,9 @@ async function addImprovements() {
             addSearchLinkAndOpenAllButton("JavPlace", `https://jav.place/en?q=${avid}`, "", linksTd);
         }
 
-        // DuckDuckGo
-        if (GM_getValue("searchGroupDuckDuckGo", configurationOptions.searchGroups.searchGroupDuckDuckGo.default)) {
-            const { linksTd } = addGroupRow("DuckDuckGo:");
+        // Alternative search engines
+        if (GM_getValue("searchGroupDuckDuckGo", configurationOptions.searchGroups.searchAlternativeSearches.default)) {
+            const { linksTd } = addGroupRow("Alternatives:");
             addSearchLinkAndOpenAllButton(
                 "Video Rapidgator Search",
                 "https://duckduckgo.com/?kah=jp-jp&kl=jp-jp&kp=-2&q=" + encodeURIComponent(`"${avid}" "Rapidgator"`),
@@ -2300,8 +2346,20 @@ async function addImprovements() {
                 linksTd,
             );
             addSearchLinkAndOpenAllButton(
-                "Video Image Search",
+                "DuckDuckGo Image Search",
                 `https://duckduckgo.com/?kp=-2&iax=images&ia=images&q="${avid}" JAV`,
+                "",
+                linksTd,
+            );
+            addSearchLinkAndOpenAllButton(
+                "Google Image Search",
+                `https://www.google.com/search?tbm=vid&q="${avid}" JAV`,
+                "",
+                linksTd,
+            );
+            addSearchLinkAndOpenAllButton(
+                "Yandex Image Search",
+                `https://yandex.com/images/search/?text="${avid}" JAV`,
                 "",
                 linksTd,
             );
@@ -2415,7 +2473,7 @@ async function addImprovements() {
                 signal: controller.signal,
             });
             if (response.status === 403 || response.status === 503) {
-                log("[fetchPageHtml] blocked, status:", response.status);
+                log("[fetch] blocked, status:", response.status);
                 return null;
             }
             const text = await response.text();
@@ -2430,12 +2488,12 @@ async function addImprovements() {
                 title.includes("Checking your browser") ||
                 text.includes("cf-browser-verification")
             ) {
-                log("[fetchPageHtml] Cloudflare challenge, title:", title);
+                log("[fetch] Cloudflare challenge, title:", title);
                 return null;
             }
             return doc;
         } catch (e) {
-            log("[fetchPageHtml] error:", e.name, e.message);
+            log("[fetch] error:", e.name, e.message);
             return null;
         } finally {
             clearTimeout(timeoutId);
@@ -2535,13 +2593,13 @@ async function addImprovements() {
         }
 
         if (!avid) {
-            log("[cast-search] no AVID");
+            log("[search-cast] no AVID");
             return;
         }
 
         addButton("Cast by Face", "https://xslist.org/en/searchByImage");
-        addButton("Cast by Face 2", "https://www.av-search.online/");
-        addButton("Cast by Face 3", "https://ggjav.com/ja/main/recognize_pornstar");
+        addButton("Cast by Face 2", "https://www.av-search.online/en");
+        addButton("Cast by Face 3", "https://ggjav.com/en/main/recognize_pornstar");
         addButton("Cast by Face 4", "https://face.okonomi-search.com");
         addButton("Cast by Scene", `https://avwikidb.com/en/work/${avid}`);
     }
@@ -2842,42 +2900,63 @@ function addVideoThumbnails() {
         }
 
         async function findThumbnails(avid) {
-            const remoteSources = [
+            const primarySources = [
+                { name: "JavLibrary", fetcher: getVideoThumbnailUrlFromJavLibrary },
                 { name: "JavStore", fetcher: getVideoThumbnailUrlFromJavStore },
                 { name: "BlogJAV", fetcher: getVideoThumbnailUrlFromBlogjav },
                 { name: "3xPlanet", fetcher: getVideoThumbnailUrlFrom3xPlanet },
+                { name: "Akiba-Online", fetcher: getVideoThumbnailUrlFromAkiba },
+            ];
+            // Low image quality, so only queried when no primary source delivered anything
+            const fallbackSources = [
+                { name: "Video-JAV", fetcher: getVideoThumbnailUrlFromVideoJav },
+                { name: "JAVFree", fetcher: getVideoThumbnailUrlFromJavFree },
             ];
 
-            try {
-                // JavLibrary is a local DOM lookup — check first without extra requests
-                const javLibraryUrl = await getVideoThumbnailUrlFromJavLibrary(avid);
-                if (javLibraryUrl) {
-                    if (await isImageTallEnough(javLibraryUrl)) {
-                        log("[thumbs] Image URL found on JavLibrary:", javLibraryUrl);
-                        addVideoThumbnails(javLibraryUrl);
-                        return;
-                    }
-                    log("[thumbs] Image from JavLibrary rejected: height < 500px");
-                }
-                log("[thumbs] No usable preview image found on JavLibrary");
+            // All sources of a tier race concurrently; whichever produces a tall-enough image first wins and
+            // is displayed immediately instead of waiting for every source to finish. addVideoThumbnails()
+            // itself is idempotent (bails if #videoThumbnails already exists), so a late winner is harmless.
+            async function raceSources(sources) {
+                let won = false;
 
-                // Run remaining sources in parallel, pick first non-null in priority order
-                const results = await Promise.all(remoteSources.map((s) => s.fetcher(avid).catch(() => null)));
-                for (let i = 0; i < remoteSources.length; i++) {
-                    if (results[i] && (await isImageTallEnough(results[i]))) {
-                        log(`[thumbs] Image URL found on ${remoteSources[i].name}:`, results[i]);
-                        addVideoThumbnails(results[i]);
-                        return;
-                    }
-                    log(`[thumbs] No usable preview image found on ${remoteSources[i].name}`);
-                }
+                await Promise.all(
+                    sources.map(async (source) => {
+                        let url;
+                        try {
+                            url = await source.fetcher(avid);
+                        } catch (error) {
+                            console.error(`Error fetching preview image URL from ${source.name}:`, error);
+                            return;
+                        }
+                        if (!url) {
+                            log(`[thumbs] No usable preview image found on ${source.name}`);
+                            return;
+                        }
+                        if (won) return;
 
-                log("[thumbs] No preview image found from any source");
-                addVideoThumbnails(null);
-            } catch (error) {
-                console.error("Error during thumbnail search:", error);
-                addVideoThumbnails(null);
+                        const tallEnough = await isImageTallEnough(url);
+                        if (!tallEnough) {
+                            log(`[thumbs] Image from ${source.name} rejected: height < 500px`);
+                            return;
+                        }
+                        if (won) return;
+
+                        won = true;
+                        log(`[thumbs] Image URL found on ${source.name}:`, url);
+                        addVideoThumbnails(url);
+                    }),
+                );
+
+                return won;
             }
+
+            if (await raceSources(primarySources)) return;
+
+            log("[thumbs] No preview image from primary sources, trying fallback sources");
+            if (await raceSources(fallbackSources)) return;
+
+            log("[thumbs] No preview image found from any source");
+            addVideoThumbnails(null);
         }
 
         findThumbnails(avid);
@@ -2891,6 +2970,27 @@ function addVideoThumbnails() {
             .replace("/th/", "/i/");
     }
 
+    // Fetches an image via GM_xmlhttpRequest (bypasses third-party cookie/hotlink restrictions a plain
+    // <img src> load would hit) and returns a local blob URL, or undefined if too small/unreachable.
+    async function fetchValidatedImage(url, referer = "") {
+        try {
+            const blob = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: url,
+                    headers: referer ? { Referer: referer } : undefined,
+                    responseType: "blob",
+                    onload: (response) => (response.status === 200 ? resolve(response.response) : reject()),
+                    onerror: reject,
+                });
+            });
+            if (!blob || blob.size < 20 * 1024) return undefined;
+            return URL.createObjectURL(blob);
+        } catch (e) {
+            return undefined;
+        }
+    }
+
     // Get big preview image URL from JavLibrary
     async function getVideoThumbnailUrlFromJavLibrary(avid) {
         async function searchLinkOnJavLibrary(avid) {
@@ -2899,10 +2999,9 @@ function addVideoThumbnails() {
             let targetImageUrl;
 
             // find imagetwist page URL for direct page scraping
-            const avidLower = avid.toLowerCase();
             let imageTwistPageUrl = [...linkNodeList]
                 .reverse()
-                .find((a) => a.href.toLowerCase().includes(avidLower) && a.href.includes("imagetwist.com"))?.href;
+                .find((a) => avidTextMatches(a.href, avid) && a.href.includes("imagetwist.com"))?.href;
             // extract actual imagetwist URL from JavLibrary redirect wrapper
             if (imageTwistPageUrl) {
                 const redirectMatch = imageTwistPageUrl.match(/[?&]url=([^&]+)/);
@@ -2915,7 +3014,8 @@ function addVideoThumbnails() {
                 if (
                     linkNode.href.includes("pixhost.to") ||
                     linkNode.href.includes("imagetwist.com") ||
-                    linkNode.href.includes("imagehaha.com")
+                    linkNode.href.includes("imagehaha.com") ||
+                    linkNode.href.includes("creamage.com")
                 ) {
                     targetImageUrl = linkNode.querySelector("img")?.src;
                     if (targetImageUrl) {
@@ -2924,22 +3024,39 @@ function addVideoThumbnails() {
                 }
             }
 
+            // Fallback: some hosts are embedded as bare <img> tags directly in the
+            // comment text, with no wrapping <a> link — the "_s.jpg" suffix marks it as the small preview.
+            if (!targetImageUrl) {
+                const bareImages = [...document.querySelectorAll("#video_comments table.comment img")].reverse();
+                targetImageUrl = bareImages.find((img) => /_s\.jpg$/i.test(img.src))?.src;
+            }
+
             if (targetImageUrl) {
                 targetImageUrl = normalizeImageUrl(targetImageUrl);
                 if (/imagehaha/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
                 if (/pixhost/gi.test(targetImageUrl))
                     targetImageUrl = targetImageUrl.replace(/\/t(\d+)\.pixhost\.to\//, "/img$1.pixhost.to/");
+                // creamage embeds a medium-sized preview ("...NAME.md.jpg"); the full-size viewer page
+                // serves the exact same path with the ".md" infix removed.
+                if (/creamage/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(/\.md\.(jpe?g|png)$/i, ".$1");
 
+                log(`[thumbs][javlibrary] image URL from comments: ${targetImageUrl}`);
                 const blobUrl = await fetchValidatedImage(targetImageUrl);
                 if (blobUrl) return blobUrl;
+                log("[thumbs][javlibrary] image fetch failed or was too small");
+            } else {
+                log("[thumbs][javlibrary] no image host link found in the comments");
             }
 
             // if thumbnail failed or missing, fetch ImageTwist page to extract the direct image URL
             if (imageTwistPageUrl) {
+                log(`[thumbs][javlibrary] falling back to ImageTwist page: ${imageTwistPageUrl}`);
                 const directUrl = await fetchImageUrlFromImageTwistPage(imageTwistPageUrl);
                 if (directUrl) {
+                    log(`[thumbs][javlibrary] ImageTwist image URL: ${directUrl}`);
                     const blobUrl = await fetchValidatedImage(directUrl);
                     if (blobUrl) return blobUrl;
+                    log("[thumbs][javlibrary] ImageTwist image fetch failed or was too small");
                 }
             }
 
@@ -2949,29 +3066,16 @@ function addVideoThumbnails() {
         async function fetchImageUrlFromImageTwistPage(pageUrl) {
             try {
                 const result = await xmlhttpRequest(pageUrl);
-                if (!result.isSuccess) return null;
+                if (!result.isSuccess) {
+                    log(`[thumbs][javlibrary] failed to load ImageTwist page (status: ${result.status}): ${pageUrl}`);
+                    return null;
+                }
                 const match = result.responseText.match(/https?:\/\/[a-z]*\d+\.imagetwist\.com\/i\/\d+\/[^\s"'<>]+/i);
+                if (!match) log(`[thumbs][javlibrary] no direct image URL found on ImageTwist page: ${pageUrl}`);
                 return match ? match[0] : null;
             } catch (e) {
+                log(`[thumbs][javlibrary] ImageTwist page request failed: ${pageUrl}`);
                 return null;
-            }
-        }
-
-        async function fetchValidatedImage(url) {
-            try {
-                const blob = await new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
-                        method: "GET",
-                        url: url,
-                        responseType: "blob",
-                        onload: (response) => (response.status === 200 ? resolve(response.response) : reject()),
-                        onerror: reject,
-                    });
-                });
-                if (!blob || blob.size < 20 * 1024) return undefined;
-                return URL.createObjectURL(blob);
-            } catch (e) {
-                return undefined;
             }
         }
 
@@ -2990,14 +3094,20 @@ function addVideoThumbnails() {
             const result = await xmlhttpRequest(searchUrl);
             if (!result.isSuccess) {
                 console.error("Connection error when searching on BlogJAV");
+                log(`[thumbs][blogjav] search request failed (status: ${result.status}): ${searchUrl}`);
                 return null;
             }
-            return findLinkInDocument(result.responseText, avid, ".entry-title a", searchUrl);
+            const link = findLinkInDocument(result.responseText, avid, ".entry-title a", searchUrl);
+            log(link ? `[thumbs][blogjav] matched post: ${link}` : "[thumbs][blogjav] no post matched the AVID");
+            return link;
         }
 
         async function fetchImageUrl(linkUrl) {
             const result = await xmlhttpRequest(linkUrl);
-            if (!result.isSuccess) return null;
+            if (!result.isSuccess) {
+                log(`[thumbs][blogjav] failed to load post page (status: ${result.status}): ${linkUrl}`);
+                return null;
+            }
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
             const imageNodeList = doc.querySelectorAll(
                 '.entry-content a img[data-src*="pixhost."], .entry-content a img[data-src*="imagetwist."], ' +
@@ -3009,6 +3119,7 @@ function addVideoThumbnails() {
                 let targetImageUrl = lastImageNode.dataset.src || lastImageNode.getAttribute("src");
                 targetImageUrl = normalizeImageUrl(targetImageUrl);
                 if (/imagetwist/gi.test(targetImageUrl)) targetImageUrl = targetImageUrl.replace(".jpg", ".jpeg");
+                log(`[thumbs][blogjav] using last of ${imageNodeList.length} image(s): ${targetImageUrl}`);
 
                 // check if only a picture removed image is shown
                 try {
@@ -3023,10 +3134,11 @@ function addVideoThumbnails() {
                     }
                     throw new Error('"Picture removed" placeholder');
                 } catch (error) {
-                    log("[thumbs] The image URL obtained from BlogJAV has been removed or failed to load: " + error.message);
+                    log("[thumbs][blogjav] The image URL obtained from BlogJAV has been removed or failed to load: " + error.message);
                     return null;
                 }
             }
+            log(`[thumbs][blogjav] no pixhost/imagetwist image found on: ${linkUrl}`);
             return null;
         }
 
@@ -3050,24 +3162,44 @@ function addVideoThumbnails() {
             const result = await xmlhttpRequest(searchUrl);
             if (!result.isSuccess) {
                 console.error("Connection error when searching on JavStore");
+                log(`[thumbs][javstore] search request failed (status: ${result.status}): ${searchUrl}`);
                 return null;
             }
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const avidSlug = avid.replace(/-/g, ""); // JavStore URLs omit the dash (e.g. "abc123" not "abc-123")
-            const linkEl = doc.querySelector(`a[href*="${avidSlug}" i]`);
-            if (!linkEl) return null;
+            // avidTextMatches treats hyphens as optional, so it matches both "abc-123" and JavStore's
+            // dash-less "abc123" URLs in one go, while still guarding against e.g. "ABC-123" matching "XABC-123".
+            const linkEl = [...doc.querySelectorAll("a[href]")].find((a) => avidTextMatches(a.getAttribute("href"), avid));
+            if (!linkEl) {
+                log("[thumbs][javstore] no post matched the AVID");
+                return null;
+            }
             const href = linkEl.getAttribute("href");
-            return href.startsWith("http") ? href : new URL(href, "https://javstore.net/").href;
+            const link = href.startsWith("http") ? href : new URL(href, "https://javstore.net/").href;
+            log(`[thumbs][javstore] matched post: ${link}`);
+            return link;
         }
 
         async function fetchImageUrl(linkUrl) {
             const result = await xmlhttpRequest(linkUrl);
-            if (!result.isSuccess) return null;
+            if (!result.isSuccess) {
+                log(`[thumbs][javstore] failed to load post page (status: ${result.status}): ${linkUrl}`);
+                return null;
+            }
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const imageLink = doc.querySelector(`a[href*="img.javstore.net"][href*="${avid}_s.jpg" i]`);
+            const flexibleAvid = avid.replace(/-/g, "-?");
+            const suffixRegexp = new RegExp(`(?<![a-zA-Z0-9])${flexibleAvid}_s\\.jpg`, "i");
+            const imageLink = [...doc.querySelectorAll('a[href*="img.javstore.net"]')].find((a) =>
+                suffixRegexp.test(a.getAttribute("href") || ""),
+            );
             // .href resolves relative URLs against the current tab, not the fetched page — use getAttribute + URL constructor instead
             const rawHref = imageLink?.getAttribute("href");
-            return rawHref ? new URL(rawHref, linkUrl).href : null;
+            if (!rawHref) {
+                log(`[thumbs][javstore] no "<AVID>_s.jpg" image found on: ${linkUrl}`);
+                return null;
+            }
+            const imageUrl = new URL(rawHref, linkUrl).href;
+            log(`[thumbs][javstore] image URL: ${imageUrl}`);
+            return imageUrl;
         }
 
         try {
@@ -3087,31 +3219,57 @@ function addVideoThumbnails() {
         async function searchLink(avid) {
             const searchUrl = `https://3xplanet.com/?s=${avid}`;
             const result = await xmlhttpRequest(searchUrl);
-            if (!result.isSuccess) return null;
+            if (!result.isSuccess) {
+                log(`[thumbs][3xplanet] search request failed (status: ${result.status}): ${searchUrl}`);
+                return null;
+            }
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const el = doc.querySelector(`a[href*="${avid}" i]`);
-            if (!el) return null;
+            const el = [...doc.querySelectorAll("a[href]")].find((a) => avidTextMatches(a.getAttribute("href"), avid));
+            if (!el) {
+                log("[thumbs][3xplanet] no post matched the AVID");
+                return null;
+            }
             // .href resolves relative URLs against the current tab, not the fetched page — use getAttribute + URL constructor instead
             const rawHref = el.getAttribute("href");
-            return rawHref ? new URL(rawHref, searchUrl).href : null;
+            const link = rawHref ? new URL(rawHref, searchUrl).href : null;
+            log(`[thumbs][3xplanet] matched post: ${link}`);
+            return link;
         }
 
         async function fetchImageUrl(linkUrl) {
             const result = await xmlhttpRequest(linkUrl);
-            if (!result.isSuccess) return null;
+            if (!result.isSuccess) {
+                log(`[thumbs][3xplanet] failed to load post page (status: ${result.status}): ${linkUrl}`);
+                return null;
+            }
             const doc = new DOMParser().parseFromString(result.responseText, "text/html");
-            const thumbnailImg = doc.querySelectorAll(`img[alt*="${avid}" i]`);
-            if (!thumbnailImg || thumbnailImg.length === 0) return null;
+            const thumbnailImg = [...doc.querySelectorAll("img[alt]")].filter((img) => avidTextMatches(img.getAttribute("alt"), avid));
+            if (thumbnailImg.length === 0) {
+                log(`[thumbs][3xplanet] no image with a matching alt attribute found on: ${linkUrl}`);
+                return null;
+            }
 
             const rawHref = thumbnailImg[thumbnailImg.length - 1].closest("a")?.getAttribute("href");
             const imagePageUrl = rawHref ? new URL(rawHref, linkUrl).href : null;
 
-            if (!imagePageUrl) return null;
+            if (!imagePageUrl) {
+                log(`[thumbs][3xplanet] matching image is not linked to an image page on: ${linkUrl}`);
+                return null;
+            }
 
             const imagePageResult = await xmlhttpRequest(imagePageUrl);
-            if (!imagePageResult.isSuccess) return null;
+            if (!imagePageResult.isSuccess) {
+                log(`[thumbs][3xplanet] failed to load image page (status: ${imagePageResult.status}): ${imagePageUrl}`);
+                return null;
+            }
             const imagePageDoc = new DOMParser().parseFromString(imagePageResult.responseText, "text/html");
-            return imagePageDoc.querySelector("#show_image")?.src ?? null;
+            const imageUrl = imagePageDoc.querySelector("#show_image")?.src ?? null;
+            log(
+                imageUrl
+                    ? `[thumbs][3xplanet] image URL: ${imageUrl}`
+                    : `[thumbs][3xplanet] no #show_image found on image page: ${imagePageUrl}`,
+            );
+            return imageUrl;
         }
 
         try {
@@ -3126,6 +3284,384 @@ function addVideoThumbnails() {
         }
     }
 
+    // Get big preview image URL from Akiba-Online
+    async function getVideoThumbnailUrlFromAkiba(avid) {
+        // Serializes a form's fields and POSTs them via xmlhttpRequest, emulating a real submit-button click
+        // without needing a DOM click event or page navigation. Returns null on failure.
+        async function submitFormViaPost(form, pageUrl) {
+            const actionUrl = new URL(form.getAttribute("action") || pageUrl, pageUrl).href;
+
+            const formData = new URLSearchParams();
+            form.querySelectorAll("input[name], select[name], textarea[name]").forEach((el) => {
+                if ((el.type === "checkbox" || el.type === "radio") && !el.checked) return;
+                if (el.type === "submit" || el.type === "button" || el.type === "image") return;
+                if (el.tagName === "SELECT") {
+                    [...el.selectedOptions].forEach((opt) => formData.append(el.name, opt.value));
+                } else {
+                    formData.append(el.name, el.value);
+                }
+            });
+
+            const result = await xmlhttpRequest(actionUrl, pageUrl, null, {
+                method: "POST",
+                data: formData.toString(),
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            });
+            if (!result.isSuccess) return null;
+            return { html: result.responseText, finalUrl: result.finalUrl || actionUrl };
+        }
+
+        // The search results are only generated after the search form is actually submitted (POST) —
+        // the prefilled GET page (used for the manual "Thumbnails 1" link) just renders the empty form.
+        async function searchLinks(avid) {
+            const searchPageUrl = `https://www.akiba-online.com/search/?q=${avid}&c%5Btitle_only%5D=1&o=date&search=${avid}`;
+            const formPage = await xmlhttpRequest(searchPageUrl);
+            if (!formPage.isSuccess) {
+                console.error("Connection error when loading Akiba-Online search form");
+                return [];
+            }
+            const formDoc = new DOMParser().parseFromString(formPage.responseText, "text/html");
+            const form = formDoc.querySelector("#top > div.p-body > div > div.uix_contentWrapper > div > div > div > form");
+            if (!form) {
+                log("[thumbs][akiba] search form not found on search page");
+                return [];
+            }
+
+            const results = await submitFormViaPost(form, searchPageUrl);
+            if (!results) {
+                console.error("Connection error when submitting Akiba-Online search form");
+                return [];
+            }
+            log(`[thumbs][akiba] search POST finalUrl: ${results.finalUrl}, response length: ${results.html.length}`);
+
+            const doc = new DOMParser().parseFromString(results.html, "text/html");
+            const searchUrl = results.finalUrl;
+
+            const listItems = doc.querySelectorAll("div.block-container > ol > li");
+            const badges = doc.querySelectorAll("div.block-container > ol > li span.label--royalBlue");
+            log(`[thumbs][akiba] result items: ${listItems.length}, FileJoker badges: ${badges.length}`);
+            if (listItems.length > 0) {
+                log(
+                    "[thumbs][akiba] result titles: " +
+                        [...listItems].map((li) => li.querySelector("h3 a")?.textContent?.trim()).join(" | "),
+                );
+            }
+
+            // Threads carrying the FileJoker badge are the most reliable single source for a direct preview,
+            // so they're tried first — but any other thread matching the AVID is still a valid fallback
+            // candidate, same as the manual search opens every matching thread in a tab when there's no badge.
+            const matches = [...listItems]
+                .map((li) => {
+                    const titleLink = li.querySelector("h3 a");
+                    if (!avidTextMatches(titleLink?.textContent, avid)) return null;
+                    const rawHref = titleLink.getAttribute("href");
+                    if (!rawHref) return null;
+                    return { href: new URL(rawHref, searchUrl).href, hasBadge: !!li.querySelector("span.label--royalBlue") };
+                })
+                .filter(Boolean);
+
+            if (matches.length === 0) {
+                log("[thumbs][akiba] no thread matched the AVID");
+                return [];
+            }
+
+            matches.sort((a, b) => b.hasBadge - a.hasBadge);
+            const links = matches.slice(0, 5).map((m) => m.href);
+            log(`[thumbs][akiba] matched ${links.length} candidate thread(s): ${links.join(", ")}`);
+            return links;
+        }
+
+        // Picks the cover image out of a thread's attachment list. Tries a series of naming conventions
+        // observed on Akiba threads, from most to least specific, then falls back to whatever's left.
+        function findCoverImageElement(doc) {
+            // Primary: threads with a dedicated FileJoker preview name it "..._s.jpg", "..._ss.jpg", etc.
+            // XenForo mangles the filename into the attachment URL (dots/underscores become dashes), so the
+            // "_s.jpg" suffix only survives in the alt/title text, not in the src/data-src attribute itself.
+            let imageEl = [...doc.querySelectorAll(".js-lbImage img")].find((img) => {
+                const name = img.getAttribute("alt") || img.getAttribute("title") || "";
+                return /_s+\.(?:jpe?g|png)$/i.test(name);
+            });
+
+            if (!imageEl) {
+                // Fallback: some threads explicitly label the cover "...-thumbnail.jpg", "...mkv_thumbs.jpg",
+                // or a "_thumbs_[<timestamp>].jpg" contact sheet — any of these rank above a plain "preview.jpg"
+                // when both are present, since a thumbs/thumbnail image is the more reliable cover.
+                const named = [...doc.querySelectorAll(".js-lbImage img")].filter((img) => {
+                    const name = img.getAttribute("alt") || img.getAttribute("title") || "";
+                    return /thumbnails?|thumbs?|preview/i.test(name) && /\.(?:jpe?g|png)$/i.test(name);
+                });
+                imageEl =
+                    named.find((img) => /thumbnails?|thumbs?/i.test(img.getAttribute("alt") || img.getAttribute("title") || "")) ||
+                    named[0];
+                if (imageEl) {
+                    log('[thumbs][akiba] using explicitly named "thumbnail"/"preview" image');
+                }
+            }
+
+            if (!imageEl) {
+                // Fallback: multi-page covers are named "...-A.jpg", "...-B.jpg", "...-E.jpg" etc. — the last
+                // letter in the sequence is the one we want.
+                const lettered = [...doc.querySelectorAll(".js-lbImage img")]
+                    .map((img) => {
+                        const name = img.getAttribute("alt") || img.getAttribute("title") || "";
+                        const match = name.match(/-([a-z])\.(?:jpe?g|png)$/i);
+                        return match ? { img, letter: match[1].toUpperCase() } : null;
+                    })
+                    .filter(Boolean);
+
+                if (lettered.length > 0) {
+                    lettered.sort((a, b) => a.letter.localeCompare(b.letter));
+                    imageEl = lettered[lettered.length - 1].img;
+                    log(`[thumbs][akiba] using last of ${lettered.length} lettered images (${lettered.map((l) => l.letter).join(",")})`);
+                }
+            }
+
+            if (!imageEl) {
+                // Fallback: some threads name the cover after the video file itself, e.g. "TITLE.1080p.mp4.jpg"
+                // — matched by the video extension before ".jpg". Plain numbered screenshots like "TITLE.0.jpg"
+                // don't match this and are deliberately excluded, since they're preview frames, not the cover.
+                imageEl = [...doc.querySelectorAll(".js-lbImage img, .bbImageWrapper img")].find((img) => {
+                    const name = img.getAttribute("alt") || img.getAttribute("title") || "";
+                    return /\.(?:mp4|mkv|avi|wmv|mov)\.jpe?g$/i.test(name);
+                });
+                if (imageEl) {
+                    log("[thumbs][akiba] using video-file-named attachment image (no _s/lettered suffix matched)");
+                }
+            }
+
+            if (!imageEl) {
+                // Fallback: some threads name the cover "<AVID>.<resolution>p.jpeg", e.g. "DVDES-857.1080p.jpeg"
+                // — matched by a resolution tag right before the extension, same idea as the video-extension
+                // check above but for threads that dropped the video extension itself.
+                imageEl = [...doc.querySelectorAll(".js-lbImage img, .bbImageWrapper img")].find((img) => {
+                    const name = img.getAttribute("alt") || img.getAttribute("title") || "";
+                    return /\d{3,4}p\.(?:jpe?g|png)$/i.test(name);
+                });
+                if (imageEl) {
+                    log("[thumbs][akiba] using resolution-tagged attachment image (<AVID>.<res>p.jpg)");
+                }
+            }
+
+            if (!imageEl) {
+                // Fallback: no naming convention matched. JAV covers are DVD-case shaped (taller than wide),
+                // while preview screenshots and contact sheets tend to be landscape, so prefer portrait images
+                // among the remaining candidates when any exist. Images without width/height attributes are
+                // kept either way, since their orientation is unknown. Among what's left, the last attachment
+                // is usually the right thumbnail (earlier ones tend to be smaller listing thumbnails like
+                // "...pl.jpg").
+                function isPortraitOrUnknown(img) {
+                    const w = parseInt(img.getAttribute("width"), 10);
+                    const h = parseInt(img.getAttribute("height"), 10);
+                    return !w || !h || h >= w;
+                }
+                const all = [...doc.querySelectorAll(".js-lbImage img")];
+
+                // A thread with only a single image is more likely to be posting the DVD cover than an actual
+                // preview thumbnail/contact sheet — especially when that image is landscape, since cover scans
+                // are often a wide front+back spread. Better to find nothing than to grab the wrong artwork.
+                if (all.length === 1) {
+                    const w = parseInt(all[0].getAttribute("width"), 10);
+                    const h = parseInt(all[0].getAttribute("height"), 10);
+                    if (w && h && w > h) {
+                        log("[thumbs][akiba] only one image found and it's landscape — likely a cover, discarding");
+                    } else {
+                        imageEl = all[0];
+                        log("[thumbs][akiba] using the only image found (no naming convention matched)");
+                    }
+                } else {
+                    const portrait = all.filter(isPortraitOrUnknown);
+                    const candidates = portrait.length > 0 ? portrait : all;
+                    if (candidates.length > 0) {
+                        imageEl = candidates[candidates.length - 1];
+                        log(`[thumbs][akiba] using the last of ${candidates.length} image(s) (no naming convention matched)`);
+                    }
+                }
+            }
+
+            if (!imageEl) {
+                const allImageAttrs = [...doc.querySelectorAll(".bbImageWrapper img, .message-body img")]
+                    .map((img) => img.getAttribute("alt") || img.getAttribute("title"))
+                    .filter(Boolean);
+                log(`[thumbs][akiba] no usable image found on thread page. Images seen: ${allImageAttrs.join(" | ")}`);
+            }
+
+            return imageEl || null;
+        }
+
+        async function fetchImageUrl(linkUrl) {
+            const result = await xmlhttpRequest(linkUrl);
+            if (!result.isSuccess) {
+                log(`[thumbs][akiba] failed to load thread page: ${linkUrl}`);
+                return null;
+            }
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+
+            // If the image is wrapped in a link, that link points at the actual attachment — the <img> itself
+            // may only be a smaller auto-generated preview (e.g. src=".../data/attachments/<hash>.jpg").
+            // Otherwise the wrapping ".bbImageWrapper" div's data-src (or the img's own src) is the real attachment.
+            function resolveImageUrl(imageEl) {
+                const wrappingLink = imageEl.closest("a[href]");
+                const wrapperDiv = imageEl.closest(".bbImageWrapper[data-src]");
+                const rawSrc =
+                    wrappingLink?.getAttribute("href") ||
+                    wrapperDiv?.getAttribute("data-src") ||
+                    imageEl.getAttribute("data-src") ||
+                    imageEl.getAttribute("src");
+                return rawSrc ? new URL(rawSrc, linkUrl).href : null;
+            }
+
+            const imageEl = findCoverImageElement(doc);
+            if (!imageEl) return null;
+
+            const imageUrl = resolveImageUrl(imageEl);
+            if (!imageUrl) return null;
+            log(`[thumbs][akiba] image URL: ${imageUrl}`);
+
+            // Attachments are hotlink-protected; a plain <img src> load (as isImageTallEnough does) gets rejected
+            // without the forum's own Referer/cookies, so fetch+validate it here and hand back a local blob URL.
+            const blobUrl = await fetchValidatedImage(imageUrl, linkUrl);
+            if (!blobUrl) {
+                log("[thumbs][akiba] image fetch failed or was too small");
+                return null;
+            }
+            return blobUrl;
+        }
+
+        try {
+            const links = await searchLinks(avid);
+            for (const link of links) {
+                const imageUrl = await fetchImageUrl(link);
+                if (imageUrl) return imageUrl;
+            }
+            return null;
+        } catch (error) {
+            console.error("Error fetching preview image URL from Akiba-Online:", error);
+            return null;
+        }
+    }
+
+    // Get big preview image URL from Video-JAV
+    async function getVideoThumbnailUrlFromVideoJav(avid) {
+        async function searchLinks(avid) {
+            const searchUrl = `http://video-jav.net/?s=${avid}`;
+            const result = await xmlhttpRequest(searchUrl).catch((e) => ({ isSuccess: false, status: e?.status }));
+            if (!result.isSuccess) {
+                log(`[thumbs][video-jav] search request failed (status: ${result.status}): ${searchUrl}`);
+                return [];
+            }
+            if (isCloudflare(result.responseText)) {
+                log("[thumbs][video-jav] search blocked by Cloudflare, skipping (needs a real browser tab)");
+                return [];
+            }
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            const links = findVideoUrlsForAVID(doc, avid, searchUrl);
+            log(`[thumbs][video-jav] matched ${links.length} post(s): ${links.join(", ")}`);
+            return links;
+        }
+
+        async function fetchImageUrl(linkUrl) {
+            const result = await xmlhttpRequest(linkUrl).catch((e) => ({ isSuccess: false, status: e?.status }));
+            if (!result.isSuccess) {
+                log(`[thumbs][video-jav] failed to load post page (status: ${result.status}): ${linkUrl}`);
+                return null;
+            }
+            if (isCloudflare(result.responseText)) {
+                log(`[thumbs][video-jav] post page blocked by Cloudflare: ${linkUrl}`);
+                return null;
+            }
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            // The full screenshot-collage image is named "...Video-JAV.net_.mp4.scrlist.jpg"
+            const imageEl = doc.querySelector('img[src*=".scrlist.jpg" i]');
+            const rawSrc = imageEl?.getAttribute("src");
+            if (!rawSrc) {
+                log(`[thumbs][video-jav] no scrlist image found on: ${linkUrl}`);
+                return null;
+            }
+            const imageUrl = new URL(rawSrc, linkUrl).href;
+            log(`[thumbs][video-jav] image URL: ${imageUrl}`);
+
+            // The image appears to be hotlink-protected; a plain <img src> load (as isImageTallEnough does)
+            // gets a placeholder instead of the real file, so fetch+validate it here and hand back a blob URL.
+            const blobUrl = await fetchValidatedImage(imageUrl, linkUrl);
+            if (!blobUrl) {
+                log("[thumbs][video-jav] image fetch failed or was too small");
+                return null;
+            }
+            return blobUrl;
+        }
+
+        try {
+            const links = await searchLinks(avid);
+            for (const link of links) {
+                const imageUrl = await fetchImageUrl(link);
+                if (imageUrl) return imageUrl;
+            }
+            return null;
+        } catch (error) {
+            console.error("Error fetching preview image URL from Video-JAV:", error);
+            return null;
+        }
+    }
+
+    // Get big preview image URL from JAVFree
+    async function getVideoThumbnailUrlFromJavFree(avid) {
+        async function searchLinks(avid) {
+            const searchUrl = `https://javfree.me/search/${avid}`;
+            const result = await xmlhttpRequest(searchUrl).catch((e) => ({ isSuccess: false, status: e?.status }));
+            if (!result.isSuccess) {
+                log(`[thumbs][javfree] search request failed (status: ${result.status}): ${searchUrl}`);
+                return [];
+            }
+            if (isCloudflare(result.responseText)) {
+                log("[thumbs][javfree] search blocked by Cloudflare, skipping (needs a real browser tab)");
+                return [];
+            }
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            const links = findVideoUrlsForAVID(doc, avid, searchUrl);
+            log(`[thumbs][javfree] matched ${links.length} post(s): ${links.join(", ")}`);
+            return links;
+        }
+
+        async function fetchImageUrl(linkUrl) {
+            const result = await xmlhttpRequest(linkUrl).catch((e) => ({ isSuccess: false, status: e?.status }));
+            if (!result.isSuccess) {
+                log(`[thumbs][javfree] failed to load post page (status: ${result.status}): ${linkUrl}`);
+                return null;
+            }
+            if (isCloudflare(result.responseText)) {
+                log(`[thumbs][javfree] post page blocked by Cloudflare: ${linkUrl}`);
+                return null;
+            }
+            const doc = new DOMParser().parseFromString(result.responseText, "text/html");
+            // The post body lists the images in a fixed order: cover first, then the screenshot collage, then
+            // the single screenshots (e.g. HLIC/ABC-123.jpg, HLIC/ABC-123-1080p.jpeg, HLIC/ABC-123-1.jpg, ...),
+            // so the collage is the second image belonging to this AVID.
+            const scoped = [...doc.querySelectorAll("div.entry-content p img[src]")];
+            const candidates = scoped.length >= 2 ? scoped : [...doc.querySelectorAll("div.entry-content img[src]")];
+            const images = candidates.filter((img) => avidTextMatches(img.getAttribute("src"), avid));
+            const rawSrc = images[1]?.getAttribute("src");
+            if (!rawSrc) {
+                log(`[thumbs][javfree] no collage image found on: ${linkUrl}`);
+                return null;
+            }
+            const imageUrl = new URL(rawSrc, linkUrl).href;
+            log(`[thumbs][javfree] image URL: ${imageUrl}`);
+            return imageUrl;
+        }
+
+        try {
+            const links = await searchLinks(avid);
+            for (const link of links) {
+                const imageUrl = await fetchImageUrl(link);
+                if (imageUrl) return imageUrl;
+            }
+            return null;
+        } catch (error) {
+            console.error("Error fetching preview image URL from JAVFree:", error);
+            return null;
+        }
+    }
+
     function findLinkInDocument(responseText, avid, selector, baseUrl) {
         let link = null;
         const doc = new DOMParser().parseFromString(responseText, "text/html");
@@ -3135,8 +3671,9 @@ function addVideoThumbnails() {
         for (let i = 0; i < linkElements.length && i < 5; i++) {
             // replace hyphens with optional hyphens
             const flexibleAvid = avid.replace(/-/g, "-?");
-            // Matches AVID only if not preceded by a letter, preventing false positives for shorter AVIDs like SS-070
-            const regexp = new RegExp(`(?<![a-zA-Z])${flexibleAvid}`, "gi");
+            // Matches AVID only if not preceded by a letter/digit or followed by a digit, preventing false
+            // positives for shorter AVIDs like ABC-123 (e.g. matching inside "XABC-123" or "ABC-1234")
+            const regexp = new RegExp(`(?<![a-zA-Z0-9])${flexibleAvid}(?!\\d)`, "gi");
 
             if (linkElements[i].innerHTML.search(regexp) > 0) {
                 if (!link) link = linkElements[i];

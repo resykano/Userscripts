@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260808
+// @version        20260829
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -2224,7 +2224,6 @@ async function addImprovements() {
         if (GM_getValue("searchGroupTorrent", configurationOptions.searchGroups.searchGroupTorrent.default)) {
             const { linksTd } = addGroupRow("Torrents:");
             addSearchLinkAndOpenAllButton("BT4G", `https://bt4gprx.com/search?q=${avid}&orderby=size`, "Torrent", linksTd);
-            addSearchLinkAndOpenAllButton("BTDig", `https://btdig.com/search?order=3&q=${avid}`, "Torrent", linksTd);
             addSearchLinkAndOpenAllButton("Sukebei", `https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=${avid}`, "Torrent", linksTd);
             addSearchLinkAndOpenAllButton("BT1207", `https://bt1207so.top/?find=${avid}`, "Torrent", linksTd);
         }

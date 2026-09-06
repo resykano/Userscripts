@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260829
+// @version        20260906
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -2224,6 +2224,7 @@ async function addImprovements() {
         if (GM_getValue("searchGroupTorrent", configurationOptions.searchGroups.searchGroupTorrent.default)) {
             const { linksTd } = addGroupRow("Torrents:");
             addSearchLinkAndOpenAllButton("BT4G", `https://bt4gprx.com/search?q=${avid}&orderby=size`, "Torrent", linksTd);
+            addSearchLinkAndOpenAllButton("BTDig", `https://btdig.com/search?order=3&q=${avid}`, "Torrent", linksTd);
             addSearchLinkAndOpenAllButton("Sukebei", `https://sukebei.nyaa.si/?f=0&c=0_0&s=size&o=desc&q=${avid}`, "Torrent", linksTd);
             addSearchLinkAndOpenAllButton("BT1207", `https://bt1207so.top/?find=${avid}`, "Torrent", linksTd);
         }
@@ -2232,13 +2233,13 @@ async function addImprovements() {
         if (GM_getValue("searchGroupThumbnails1", configurationOptions.searchGroups.searchGroupThumbnails1.default)) {
             const { actionTd, linksTd } = addGroupRow("Thumbnails 1:", "Thumbnails-1-Group");
             addGroupActionButton(actionTd, "Search All", "Thumbnails-1-Group", null, true);
-            addSearchLinkAndOpenAllButton("Max JAV", `https://maxjav.com/?s=${avid}`, "Thumbnails-1-Group", linksTd);
             addSearchLinkAndOpenAllButton(
                 "Akiba-Online",
                 `https://www.akiba-online.com/search/?q=${avid}&c%5Btitle_only%5D=1&o=date&search=${avid}`,
                 "Thumbnails-1-Group",
                 linksTd,
             );
+            addSearchLinkAndOpenAllButton("Max JAV", `https://maxjav.com/?s=${avid}`, "Thumbnails-1-Group", linksTd);
         }
 
         // Thumbnails 2
@@ -2350,18 +2351,8 @@ async function addImprovements() {
                 "",
                 linksTd,
             );
-            addSearchLinkAndOpenAllButton(
-                "Google Image Search",
-                `https://www.google.com/search?tbm=vid&q="${avid}" JAV`,
-                "",
-                linksTd,
-            );
-            addSearchLinkAndOpenAllButton(
-                "Yandex Image Search",
-                `https://yandex.com/images/search/?text="${avid}" JAV`,
-                "",
-                linksTd,
-            );
+            addSearchLinkAndOpenAllButton("Google Image Search", `https://www.google.com/search?tbm=vid&q="${avid}" JAV`, "", linksTd);
+            addSearchLinkAndOpenAllButton("Yandex Image Search", `https://yandex.com/images/search/?text="${avid}" JAV`, "", linksTd);
         }
     }
 
@@ -3411,7 +3402,9 @@ function addVideoThumbnails() {
                 if (lettered.length > 0) {
                     lettered.sort((a, b) => a.letter.localeCompare(b.letter));
                     imageEl = lettered[lettered.length - 1].img;
-                    log(`[thumbs][akiba] using last of ${lettered.length} lettered images (${lettered.map((l) => l.letter).join(",")})`);
+                    log(
+                        `[thumbs][akiba] using last of ${lettered.length} lettered images (${lettered.map((l) => l.letter).join(",")})`,
+                    );
                 }
             }
 
@@ -4546,15 +4539,14 @@ function main() {
             }, 10000);
         } else {
             if (isJavLibrary) initializeBeforeRender();
-            
+
             const executeFunctions = () => {
                 addImprovements();
                 if (isJavLibrary) addVideoThumbnails();
                 if (isJavLibrary) addHomeToNavMenu();
             };
-            
+
             setTimeout(executeFunctions, 10);
-            
         }
     }
 }

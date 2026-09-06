@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Matrix Element Media Navigation
 // @description    Enables navigation through images and videos in timeline (up/down & left/right & a/Space keys) and lightbox (same keys + mousewheel) view. Its also a workaround helping against the jumps on timeline pagination/scrolling issue #8565
-// @version        20260604
+// @version        20260904
 // @author         resykano
 // @icon           https://icons.duckduckgo.com/ip2/element.io.ico
 // @match          *://*/*
@@ -294,7 +294,7 @@ function showLightboxOverlay(icon, message, { autoHide = false, mediaEl = null }
     overlay.className = "mx_nav_loader mx_nav_loader--error";
     overlay.innerHTML = `<span>${icon}</span><span>${message}</span>`;
     imageView.appendChild(overlay);
-    if (autoHide) setTimeout(hideLightboxLoader, 2500);
+    if (autoHide) setTimeout(() => { hideLightboxLoader(); closeLightbox(); }, 1500);
 }
 
 /**

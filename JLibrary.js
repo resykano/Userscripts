@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260906
+// @version        20260912
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1374,6 +1374,9 @@ async function addImprovements() {
                 // remove redirects for external links
                 removeRedirects();
 
+                // add button to display the actors' names in kanji
+                addCastKanjiButton();
+
                 // TODO: needs a more solid solution than just a blind timeout
                 //
                 // Attempted: visibilitychange / window focus event
@@ -2701,6 +2704,63 @@ async function addImprovements() {
 
         // Insert videoWatchStatus directly after videoCover
         videoCover.appendChild(videoWatchStatus);
+    }
+
+    function addCastKanjiButton() {
+        const header = document.querySelector("#video_cast td.header");
+        if (!header) return;
+        const btn = document.createElement("button");
+        btn.textContent = "Show Kanji";
+        btn.className = "smallbutton smallbutton-mod";
+        btn.style.cssText = "display:block;margin-top:6px;justify-self:right;";
+        btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            try {
+                const jpUrl = location.href.replace("/en/", "/ja/");
+                const response = await fetch(jpUrl, { credentials: "same-origin" });
+                if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+                const html = await response.text();
+                const jpDoc = new DOMParser().parseFromString(html, "text/html");
+
+                // Map cast span id -> { name, alias }
+                // alias = alternate spelling shown in parentheses next to some cast names
+                const jpNames = new Map();
+                jpDoc.querySelectorAll("#video_cast span.cast").forEach((span) => {
+                    const link = span.querySelector('a[rel="tag"]');
+                    if (!span.id || !link) return;
+
+                    // Alias span sits inside the cast span, e.g. <span id="aliasXXXXX">(name)</span>
+                    const aliasSpan = span.querySelector('span[id^="alias"]');
+                    const alias = aliasSpan ? aliasSpan.textContent.trim().replace(/^\(|\)$/g, "") : null;
+
+                    jpNames.set(span.id, { name: link.textContent.trim(), alias });
+                });
+
+                // Insert Japanese name (and alias, if present) right before the
+                // favorite-star icon, or at the end if no star icon is present
+                document.querySelectorAll("#video_cast span.cast").forEach((span) => {
+                    const jpEntry = jpNames.get(span.id);
+                    if (!jpEntry || span.querySelector(".jp-cast-name")) return;
+
+                    const jpSpan = document.createElement("span");
+                    jpSpan.className = "jp-cast-name";
+                    jpSpan.textContent = jpEntry.alias ? `(${jpEntry.name}, ${jpEntry.alias})` : `(${jpEntry.name})`;
+
+                    const favStar = span.querySelector(".icn_favstar");
+                    if (favStar) {
+                        span.insertBefore(jpSpan, favStar);
+                    } else {
+                        span.appendChild(jpSpan);
+                    }
+                });
+
+                btn.remove();
+            } catch (err) {
+                console.error("[jp-cast] Failed to load Japanese cast names:", err);
+                btn.disabled = false;
+            }
+        });
+        header.appendChild(btn);
     }
 
     function displaySearchWaitTimer() {

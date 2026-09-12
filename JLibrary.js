@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260912
+// @version        20260912.1
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -2707,6 +2707,9 @@ async function addImprovements() {
     }
 
     function addCastKanjiButton() {
+        // Only relevant on the English version of the site, since the Japanese version already shows kanji names
+        if (!location.href.includes("javlibrary.com/en/")) return;
+
         const header = document.querySelector("#video_cast td.header");
         if (!header) return;
         const btn = document.createElement("button");

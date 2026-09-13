@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           JAVLibrary Improvements
 // @description    Improvements: copy GDrive/Rapidgator links to clipboard for download managers (button or hotkey < or \), inline video thumbnails, multiple search groups (Streams, Torrents, Thumbnails, GDrive, Rapidgator) with background prefetch, cast image & face search, save favorite actresses, cover download with actress names, full-size promo images, Cloudflare auto-reload, bypass external link redirects, Blu-ray filter, color themes, layout improvements. Configurable via icon or browser extension menu.
-// @version        20260912.1
+// @version        20260913
 // @author         resykano
 // @icon           https://www.javlibrary.com/favicon.ico
 // @match          *://*.javlibrary.com/*
@@ -1517,17 +1517,18 @@ async function addImprovements() {
                 document.querySelector("#redirection").click();
                 break;
             }
-            // Video Star Listings
-            case isJavLibrary && /\/vl_star.php/.test(url): {
-                log("[page] Video Star Listings");
+            // Video Listing Pages (e.g. vl_star.php, vl_label.php, vl_update.php, ...)
+            case isJavLibrary && /\/vl_(?!searchbyid\b)\w+\.php/.test(url): {
+                log("[page] Video Listing Page");
 
-                // ToDo: highlight visited videos
-                let videoLinks = document.querySelectorAll('div[id^="vid_"] a');
-                for (let i = 0; i < videoLinks.length; i++) {
-                    if (videoLinks[i].visited) {
-                        videoLinks[i].parentNode.style.backgroundColor = "#ffe7d3";
-                    }
-                }
+                // TODO: highlight visited videos
+                // JS cannot read the browser's real :visited state (privacy restriction).
+                // A pure-CSS workaround via `div:has(> a:visited) { background-color: ... }` doesn't
+                // work either - browsers deliberately block :has() from matching on :visited, to
+                // prevent exactly this kind of history sniffing through an unrelated selector.
+                // The only way to reliably highlight visited videos here would be tracking visited
+                // AVIDs ourselves (e.g. via GM_setValue when a detail page is opened) and comparing
+                // against that list on this page - not relying on the browser's history at all.
 
                 // open in same tab
                 setTimeout(() => {
@@ -1535,6 +1536,28 @@ async function addImprovements() {
                         element.removeAttribute("target");
                     });
                 }, 2000);
+
+                // navigate between pages using the arrow keys
+                window.addEventListener("keydown", function (event) {
+                    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+                    const activeTag = document.activeElement?.tagName;
+                    if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+
+                    let pageLink;
+                    if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+                        pageLink = document.querySelector("a.page.prev");
+                    } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+                        pageLink = document.querySelector("a.page.next");
+                    } else {
+                        return;
+                    }
+
+                    if (pageLink) {
+                        event.preventDefault();
+                        window.location.href = pageLink.href;
+                    }
+                });
 
                 break;
             }
